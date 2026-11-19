@@ -1,0 +1,4 @@
+# Container API. The operational CLI itself only needs requirements.txt.
+fastapi>=0.115,<0.117
+pydantic>=2.7,<3
+uvicorn[standard]>=0.30,<0.36

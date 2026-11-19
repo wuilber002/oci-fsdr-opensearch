@@ -1,0 +1,2 @@
+# Only the FSDR CLI requires OCI SDK. Lab tools use the standard library.
+oci>=2.187.2,<3

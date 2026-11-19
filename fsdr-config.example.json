@@ -1,0 +1,22 @@
+{
+  "secret_id": null,
+  "inventory_enabled": false,
+  "state_dir": "var/dr-runtime",
+  "log_dir": "var/dr-runtime/logs",
+  "inventory_interval_hours": 2,
+  "max_inventory_age_hours": 4,
+  "retention_days": 30,
+  "service_timeout_seconds": 3600,
+  "request_timeout": 20,
+  "wait_timeout": 1800,
+  "poll_interval": 2,
+  "ca_file": null,
+  "use_private_ip": false,
+  "leader_role": null,
+  "follower_role": null,
+  "max_checkpoint_lag": 0,
+  "enforce_rpo": false,
+  "snapshot_repositories": null,
+  "max_snapshot_age_hours": 24,
+  "snapshot_required": false
+}
