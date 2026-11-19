@@ -411,6 +411,13 @@ def monitor_snapshot():
         return base
     try:
         cfg, cs = _observer_clients(configured, state_dir, secret_id)
+    except Error as exc:
+        # These controller errors are already sanitized and identify the
+        # failing dependency (discovery, Instance Principal, Vault or OCI).
+        # Showing them in the local read-only dashboard avoids an opaque
+        # "Error" while never returning the Secret payload or credentials.
+        base["errors"].append("Cannot prepare OpenSearch observer: {}".format(exc))
+        return base
     except Exception as exc:
         base["errors"].append("Cannot prepare OpenSearch observer: {}".format(type(exc).__name__))
         return base

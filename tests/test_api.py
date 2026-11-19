@@ -4,10 +4,12 @@ from pathlib import Path
 import tempfile
 import unittest
 import json
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
 from fsdr_opensearch import api
+from fsdr_opensearch.core import Error
 
 
 class ApiTests(unittest.TestCase):
@@ -65,3 +67,17 @@ class ApiTests(unittest.TestCase):
         finally:
             api.CONFIG = original
         self.assertEqual([request.command for request in manager.requests], ["inventory"])
+
+    def test_observer_error_is_explained_without_credentials(self):
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                config = Path(directory) / "config.json"
+                config.write_text(json.dumps({"secret_id": "ocid1.vaultsecret.oc1.x.y"}))
+                api.CONFIG = config
+                with patch("fsdr_opensearch.api._observer_clients",
+                           side_effect=Error("Discovery is unavailable")):
+                    data = api.monitor_snapshot()
+        finally:
+            api.CONFIG = original
+        self.assertEqual(data["errors"], ["Cannot prepare OpenSearch observer: Discovery is unavailable"])
