@@ -1,6 +1,8 @@
 """Container API unit tests without an OCI connection or a running container."""
 
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 import json
@@ -20,6 +22,12 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn("fsdr.py", args)
         self.assertIn("--execute", args)
         self.assertIn("--allow-recreate", args)
+
+    def test_internal_module_entry_point_invokes_cli(self):
+        result = subprocess.run([sys.executable, "-m", "fsdr_opensearch.cli", "--config-help"],
+                                text=True, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("FSDR configuration-file reference", result.stdout)
 
     def test_api_rejects_invalid_execution_mode(self):
         with self.assertRaises(ValidationError):
