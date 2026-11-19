@@ -383,8 +383,10 @@ def monitor_snapshot():
     state = _read_json(state_dir / "state.json", {})
     secret_id = configured.get("secret_id")
     base = {"observed_at": utc_now(), "phase": state.get("phase"),
-            "primary": state.get("active"), "indices": state.get("indices", []),
-            "clusters": {}, "errors": []}
+            "primary": state.get("active"), "inventory_at": state.get("inventory_at"),
+            "current_step": (state.get("transition") or {}).get("step"),
+            "current_index": (state.get("transition") or {}).get("current_index"),
+            "indices": state.get("indices", []), "clusters": {}, "errors": []}
     if not secret_id:
         base["errors"].append("Discovery is unavailable. Run discover or inventory first.")
         return base
