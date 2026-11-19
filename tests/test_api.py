@@ -36,6 +36,6 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(data["errors"])
 
     def test_dashboard_is_self_contained_and_does_not_embed_token(self):
-        self.assertIn("/v1/monitor", api.DASHBOARD_HTML)
+        self.assertIn("/dashboard/v1/monitor", api.DASHBOARD_HTML)
         self.assertIn("Selected job console", api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)

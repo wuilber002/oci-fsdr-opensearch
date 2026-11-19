@@ -289,6 +289,12 @@ def jobs():
     return {"jobs": api_manager().recent()}
 
 
+@app.get("/dashboard/v1/jobs")
+def dashboard_jobs():
+    """Read-only local dashboard feed; command submission remains authenticated."""
+    return {"jobs": api_manager().recent()}
+
+
 @app.get("/v1/jobs/{job_id}", dependencies=[Depends(token_auth)])
 def job(job_id: str):
     try:
@@ -299,6 +305,19 @@ def job(job_id: str):
 
 @app.get("/v1/jobs/{job_id}/output", dependencies=[Depends(token_auth)])
 def output(job_id: str):
+    try:
+        manager = api_manager()
+        manager.read(job_id)
+        data = manager.output_path(job_id).read_bytes()
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found") from None
+    except FileNotFoundError:
+        data = b""
+    return Response(content=data, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/dashboard/v1/jobs/{job_id}/output")
+def dashboard_output(job_id: str):
     try:
         manager = api_manager()
         manager.read(job_id)
@@ -406,6 +425,11 @@ def monitor_snapshot():
 
 @app.get("/v1/monitor", dependencies=[Depends(token_auth)])
 def monitor():
+    return monitor_snapshot()
+
+
+@app.get("/dashboard/v1/monitor")
+def dashboard_monitor():
     return monitor_snapshot()
 
 

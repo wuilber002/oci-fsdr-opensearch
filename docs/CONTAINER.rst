@@ -51,17 +51,11 @@ For a workstation, create a tunnel and then open the same URL locally::
 
     ssh -L 1604:127.0.0.1:1604 opc@<VM_IP>
 
-Retrieve the generated token only from an interactive local terminal. It is
-not written to logs and the command refuses redirected output::
-
-    cd /opt/oci-opensearch-fsdr
-    sudo docker compose -f compose.container.yaml exec fsdr-api \
-      python -m fsdr_opensearch.api token
-
-Paste the token in the console login. It is retained only in that browser
-tab's session storage. The screen refreshes every five seconds and provides a
-read-only observer: it uses Vault credentials in memory to obtain current
-document counts and CCR status but never writes OpenSearch or FSDR state.
+The dashboard is intentionally read-only and does not require the API Bearer
+token. It is safe to use for a local operator display because Compose binds the
+service only to ``127.0.0.1``; remote viewing must use an SSH tunnel. The screen
+refreshes every five seconds and obtains current document counts and CCR status
+without writing OpenSearch or FSDR state.
 
 The dashboard keeps the console data structure—banner, paired cluster panels,
 per-index comparison, execution console and time footer—using a web-oriented
@@ -94,9 +88,10 @@ Use the returned job ID to inspect its state and captured console output::
       -H "Authorization: Bearer $FSDR_TOKEN" \
       https://127.0.0.1:1604/v1/jobs/<JOB_ID>/output
 
-``GET /v1/jobs`` lists recent jobs and ``GET /v1/monitor`` powers the web
-observer. Both require the Bearer token. ``GET /healthz`` does not disclose
-state and is deliberately unauthenticated for local health checks.
+``GET /v1/jobs`` and ``GET /v1/monitor`` require the Bearer token. The browser
+uses separate read-only local endpoints under ``/dashboard/v1/``. ``GET
+/healthz`` does not disclose state and is deliberately unauthenticated for
+local health checks.
 
 Supported commands and execution mode
 -------------------------------------

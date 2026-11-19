@@ -8,8 +8,8 @@ that identifies both clusters and contains their internal OpenSearch
 credentials.
 
 The supported deployment is the Docker Compose service in this repository. It
-exposes a local-only HTTPS API on TCP 1604 and an authenticated web console at
-the same address. The web console shows the FSDR phase, primary/follower
+exposes a local-only HTTPS API on TCP 1604 and a read-only web console at the
+same address. The web console shows the FSDR phase, primary/follower
 direction, protected indices, current document counts, CCR status, API jobs
 and captured command output.
 
@@ -24,11 +24,6 @@ On a new executor VM, clone the repository and run the bootstrap script::
     sudo ./scripts/install_container.sh --install-docker --secret-id '<VAULT_SECRET_OCID>'
 
 Open ``https://127.0.0.1:1604`` locally on the VM, or through an SSH tunnel.
-Get the Bearer token on an interactive terminal on that VM::
-
-    sudo docker compose -f compose.container.yaml exec fsdr-api \
-      python -m fsdr_opensearch.api token
-
 The installation creates only ``runtime/`` within the repository checkout. It
 does not create a service account, host Python virtualenv, systemd unit, or
 host-level FSDR configuration under ``/etc`` or ``/var``.
