@@ -386,7 +386,14 @@ def _observer_clients(configured, state_dir, secret_id):
     if not discovery:
         raise Error("Discovery is unavailable")
     cloud = Cloud(timeout=float(configured.get("request_timeout", 20)))
-    credentials = cloud.credentials(secret_id)
+    credentials_by_id = cloud.credentials(secret_id)
+    try:
+        credentials = {
+            name: credentials_by_id[cluster["id"]]
+            for name, cluster in discovery["clusters"].items()
+        }
+    except (KeyError, TypeError):
+        raise Error("Secret credentials do not match the discovered cluster pair") from None
     cfg = runtime_config(discovery, state_dir, configured.get("log_dir", "/var/log/oci-opensearch-fsdr"),
                          configured.get("ca_file"), configured.get("leader_role"),
                          configured.get("follower_role"))

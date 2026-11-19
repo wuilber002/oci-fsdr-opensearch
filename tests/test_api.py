@@ -50,7 +50,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn("/dashboard/v1/monitor", api.DASHBOARD_HTML)
         self.assertIn("Current controller job", api.DASHBOARD_HTML)
         self.assertIn("Replicated indices comparison", api.DASHBOARD_HTML)
-        self.assertIn("Current environment", api.DASHBOARD_HTML)
+        self.assertIn("top-nav", api.DASHBOARD_HTML)
+        self.assertIn("job-grid", api.DASHBOARD_HTML)
+        self.assertIn("clusterLabel", api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
 
     def test_new_configured_deployment_queues_initial_inventory(self):
