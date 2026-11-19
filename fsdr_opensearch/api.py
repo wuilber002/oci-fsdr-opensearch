@@ -281,7 +281,7 @@ def _queue_initial_inventory(manager):
     state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
     if not secret_id:
         return
-    if (state_dir / "discovery.json").is_file() or (state_dir / "state.json").is_file():
+    if (state_dir / "state.json").is_file():
         return
     manager.submit(OperationRequest(command="inventory"))
 
@@ -393,7 +393,7 @@ def _observer_clients(configured, state_dir, secret_id):
     cfg.update(request_timeout=float(configured.get("request_timeout", 20)),
                wait_timeout=float(configured.get("wait_timeout", 1800)),
                poll_interval=float(configured.get("poll_interval", 2)),
-               use_private_ip=configured.get("use_private_ip", False))
+               use_private_ip=configured.get("use_private_ip", True))
     observed = clients(cfg, credentials)
     app.state.observer = {"at": now, "secret_id": secret_id, "cfg": cfg, "clients": observed}
     return cfg, observed

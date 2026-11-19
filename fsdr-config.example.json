@@ -11,7 +11,7 @@
   "wait_timeout": 1800,
   "poll_interval": 2,
   "ca_file": null,
-  "use_private_ip": false,
+  "use_private_ip": true,
   "leader_role": null,
   "follower_role": null,
   "max_checkpoint_lag": 0,

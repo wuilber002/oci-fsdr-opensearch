@@ -10,7 +10,7 @@ from .core import Error
 DEFAULTS = {
     "secret_id": None, "inventory_enabled": False, "state_dir": None, "log_dir": None,
     "ca_file": None, "request_timeout": 20, "wait_timeout": 1800, "poll_interval": 2,
-    "use_private_ip": False,
+    "use_private_ip": True,
     "leader_role": None, "follower_role": None, "inventory_interval_hours": 2,
     "max_inventory_age_hours": 4, "retention_days": 30, "service_timeout_seconds": 3600,
     "max_checkpoint_lag": 0, "enforce_rpo": False,
@@ -26,7 +26,7 @@ FIELD_HELP = {
     "state_dir": "Persistent directory for manifest, cache, locks, and history.",
     "log_dir": "Directory for JSONL logs.",
     "ca_file": "Path to an additional CA for OpenSearch endpoint TLS.",
-    "use_private_ip": "Connects to OCI-discovered private IP while preserving FQDN for TLS.",
+    "use_private_ip": "Connects to OCI-discovered private IP while preserving FQDN for TLS; enabled by default.",
     "request_timeout": "Seconds allowed for each OCI or HTTP call.",
     "wait_timeout": "Seconds allowed while waiting for CCR convergence.",
     "poll_interval": "Seconds between checks while waiting.",

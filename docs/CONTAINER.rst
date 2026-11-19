@@ -117,8 +117,17 @@ The container itself replaces the old host timer. It reads
 inventory job when the API worker is idle. Scheduled inventory is skipped
 while a DR transition owns the controller.
 
-On a new deployment with a configured ``secret_id`` and no durable discovery
-or state file, the container immediately queues one ``inventory`` job at
+On a new deployment with a configured ``secret_id`` and no durable state
+file, the container immediately queues one ``inventory`` job at
 startup. That job performs OCI discovery and then builds the CCR inventory;
 its progress and outcome are visible in the dashboard. It is not repeated on
 ordinary restarts after discovery/state has been persisted.
+
+Private endpoint connectivity
+-----------------------------
+
+``use_private_ip`` defaults to ``true``. The controller obtains each
+OpenSearch private IP from OCI and connects to that address while retaining
+the OCI FQDN in the HTTPS URL for TLS SNI and certificate validation. This
+avoids a dependency on cross-region private DNS resolution. The VCN route and
+network rules must still allow the VM to reach TCP/9200 on both private IPs.

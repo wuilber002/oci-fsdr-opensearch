@@ -76,6 +76,30 @@ class ApiTests(unittest.TestCase):
             api.CONFIG = original
         self.assertEqual([request.command for request in manager.requests], ["inventory"])
 
+    def test_startup_retries_initial_inventory_when_only_discovery_exists(self):
+        class Manager:
+            def __init__(self):
+                self.requests = []
+
+            def submit(self, request):
+                self.requests.append(request)
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state = root / "state"
+                state.mkdir()
+                (state / "discovery.json").write_text("{}")
+                config = root / "config.json"
+                config.write_text(json.dumps({"secret_id": "ocid1.vaultsecret.oc1.x.y", "state_dir": str(state)}))
+                api.CONFIG = config
+                manager = Manager()
+                api._queue_initial_inventory(manager)
+        finally:
+            api.CONFIG = original
+        self.assertEqual([request.command for request in manager.requests], ["inventory"])
+
     def test_observer_error_is_explained_without_credentials(self):
         original = api.CONFIG
         try:

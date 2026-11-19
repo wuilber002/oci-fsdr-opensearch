@@ -80,7 +80,7 @@ cat > "$CONFIG" <<EOF
   "request_timeout": 20,
   "wait_timeout": 1800,
   "poll_interval": 2,
-  "use_private_ip": false,
+  "use_private_ip": true,
   "leader_role": null,
   "follower_role": null,
   "inventory_interval_hours": 2,
