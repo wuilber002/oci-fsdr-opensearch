@@ -89,3 +89,11 @@ class ApiTests(unittest.TestCase):
         finally:
             api.CONFIG = original
         self.assertEqual(data["errors"], ["Cannot prepare OpenSearch observer: Discovery is unavailable"])
+
+    def test_observer_reports_incomplete_discovery_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / "discovery.json"
+            cache.write_text(json.dumps({"schema": 1, "secret_id": "secret", "clusters": {}}))
+            with self.assertRaisesRegex(Error, "Discovery cache is incomplete"):
+                api.read_cache(root, "secret")

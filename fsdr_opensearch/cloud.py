@@ -157,6 +157,9 @@ def read_cache(directory, secret_id):
     data = json.loads(path.read_text())
     if data.get("schema") != 1 or data.get("secret_id") != secret_id:
         raise Error("Discovery cache is incompatible with the Secret")
+    clusters = data.get("clusters")
+    if not isinstance(clusters, dict) or set(clusters) != {"a", "b"}:
+        raise Error("Discovery cache is incomplete; run inventory again")
     return data
 
 

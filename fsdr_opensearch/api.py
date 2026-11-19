@@ -429,7 +429,12 @@ def monitor_snapshot():
         base["errors"].append("Cannot prepare OpenSearch observer: {}".format(exc))
         return base
     except Exception as exc:
-        base["errors"].append("Cannot prepare OpenSearch observer: {}".format(type(exc).__name__))
+        # An invalid or interrupted cache must not make the dashboard opaque.
+        # Keep the message free of request data and credentials, but identify
+        # the local recovery action for the operator.
+        base["errors"].append(
+            "Cannot prepare OpenSearch observer: unexpected {}. Run inventory again; "
+            "see the controller logs if it persists.".format(type(exc).__name__))
         return base
     for name in ("a", "b"):
         cluster = cfg["clusters"][name]
