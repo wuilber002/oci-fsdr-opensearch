@@ -116,3 +116,9 @@ The container itself replaces the old host timer. It reads
 ``runtime/config/config.json`` after every interval, and only submits an
 inventory job when the API worker is idle. Scheduled inventory is skipped
 while a DR transition owns the controller.
+
+On a new deployment with a configured ``secret_id`` and no durable discovery
+or state file, the container immediately queues one ``inventory`` job at
+startup. That job performs OCI discovery and then builds the CCR inventory;
+its progress and outcome are visible in the dashboard. It is not repeated on
+ordinary restarts after discovery/state has been persisted.

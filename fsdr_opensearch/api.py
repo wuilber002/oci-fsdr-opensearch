@@ -263,8 +263,27 @@ def inventory_schedule(manager):
 @app.on_event("startup")
 def start_inventory_schedule():
     app.state.manager = JobManager()
+    _queue_initial_inventory(app.state.manager)
     threading.Thread(target=inventory_schedule, args=(app.state.manager,), daemon=True,
                      name="fsdr-inventory-scheduler").start()
+
+
+def _queue_initial_inventory(manager):
+    """Seed discovery and CCR inventory on a new configured deployment.
+
+    ``inventory`` already performs OCI discovery before inspecting CCR, so one
+    serialized read-only job is enough.  It is queued only when neither the
+    discovery cache nor durable state exists; container restarts never repeat
+    an already attempted initialization.
+    """
+    configured = _read_json(CONFIG, {})
+    secret_id = configured.get("secret_id")
+    state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+    if not secret_id:
+        return
+    if (state_dir / "discovery.json").is_file() or (state_dir / "state.json").is_file():
+        return
+    manager.submit(OperationRequest(command="inventory"))
 
 
 @app.get("/healthz")

@@ -3,6 +3,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+import json
 
 from pydantic import ValidationError
 
@@ -41,3 +42,26 @@ class ApiTests(unittest.TestCase):
         self.assertIn("Replicated indices comparison", api.DASHBOARD_HTML)
         self.assertIn("Current environment", api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
+
+    def test_new_configured_deployment_queues_initial_inventory(self):
+        class Manager:
+            def __init__(self):
+                self.requests = []
+
+            def submit(self, request):
+                self.requests.append(request)
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                config = root / "config.json"
+                state = root / "state"
+                state.mkdir()
+                config.write_text(json.dumps({"secret_id": "ocid1.vaultsecret.oc1.x.y", "state_dir": str(state)}))
+                api.CONFIG = config
+                manager = Manager()
+                api._queue_initial_inventory(manager)
+        finally:
+            api.CONFIG = original
+        self.assertEqual([request.command for request in manager.requests], ["inventory"])
