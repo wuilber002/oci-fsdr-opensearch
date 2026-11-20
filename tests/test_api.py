@@ -53,6 +53,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("top-nav", api.DASHBOARD_HTML)
         self.assertIn("job-grid", api.DASHBOARD_HTML)
         self.assertIn("clusterLabel", api.DASHBOARD_HTML)
+        self.assertIn("statusIcon", api.DASHBOARD_HTML)
+        self.assertIn('class="status-cell"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
 
     def test_new_configured_deployment_queues_initial_inventory(self):
