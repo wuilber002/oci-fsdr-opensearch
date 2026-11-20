@@ -201,10 +201,10 @@ class WorkflowTests(unittest.TestCase):
         return transition(self.cfg, self.cs, self.store, "switchover", resume=resume)
 
     def protect(self):
-        return reprotect(self.cfg, self.cs, self.store, allow_recreate=True)
+        return reprotect(self.cfg, self.cs, self.store)
 
     def protect_with_parallelism(self, parallelism):
-        return reprotect(self.cfg, self.cs, self.store, allow_recreate=True,
+        return reprotect(self.cfg, self.cs, self.store,
                          parallelism=parallelism)
 
     def test_setup_and_round_trip(self):
@@ -345,14 +345,6 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(LabError):
             self.seed()
         self.assertIsNone(self.store.read(required=False))
-
-    def test_reprotect_requires_explicit_destructive_flags(self):
-        self.seed()
-        self.switch()
-        old_uuid = self.cs["a"].uuid("fsdr-demo-0001")
-        with self.assertRaises(Error):
-            reprotect(self.cfg, self.cs, self.store)
-        self.assertEqual(old_uuid, self.cs["a"].uuid("fsdr-demo-0001"))
 
     def test_reprotect_resumes_lost_delete_response_without_deleting_new_follower(self):
         self.seed()

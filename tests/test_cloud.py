@@ -179,7 +179,7 @@ class CLITests(unittest.TestCase):
         self.assertEqual(response["result"]["active"], "a")
         code, response = self.run_cli("switchover")
         self.assertEqual((code, response["result"]["active"]), (0, "b"))
-        self.assertEqual(self.run_cli("reprotect", "--allow-recreate")[0], 0)
+        self.assertEqual(self.run_cli("reprotect")[0], 0)
         self.assertEqual(self.run_cli("switchover")[1]["result"]["active"], "a")
         self.assertEqual(LabStore(self.cfg).read()["active"], "a")  # Lab state was never changed by DR.
         for file in (self.directory / "dr").rglob("*"):

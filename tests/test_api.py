@@ -17,11 +17,11 @@ from fsdr_opensearch.core import Error
 class ApiTests(unittest.TestCase):
     def test_mutating_job_executes_by_default_using_internal_module(self):
         args = api.command_arguments(api.OperationRequest(
-            command="reprotect", allow_recreate=True, reprotect_parallelism=2))
+            command="reprotect", reprotect_parallelism=2))
         self.assertEqual(args[:3], [api.sys.executable, "-m", "fsdr_opensearch.cli"])
         self.assertNotIn("fsdr.py", args)
         self.assertNotIn("--execute", args)
-        self.assertIn("--allow-recreate", args)
+        self.assertNotIn("--allow-recreate", args)
 
     def test_internal_module_entry_point_invokes_cli(self):
         result = subprocess.run([sys.executable, "-m", "fsdr_opensearch.cli", "--config-help"],
@@ -34,6 +34,8 @@ class ApiTests(unittest.TestCase):
             api.OperationRequest(command="inventory", execute=True)
         with self.assertRaises(ValidationError):
             api.OperationRequest(command="switchover", dry_run=True)
+        with self.assertRaises(ValidationError):
+            api.OperationRequest(command="reprotect", allow_recreate=True)
 
     def test_monitor_without_configuration_has_no_side_effect(self):
         original = api.CONFIG

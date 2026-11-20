@@ -63,7 +63,6 @@ class OperationRequest(BaseModel):
     accept_data_loss: bool = False
     allow_stale_inventory: bool = False
     use_follower_annotations: bool = False
-    allow_recreate: bool = False
     reprotect_parallelism: Optional[int] = Field(default=None, ge=1)
     scheduled: bool = False
 
@@ -81,8 +80,6 @@ class OperationRequest(BaseModel):
         if self.command != "failover" and any((self.source_fenced, self.accept_data_loss,
                                                   self.allow_stale_inventory, self.use_follower_annotations)):
             raise ValueError("failover attestation fields apply only to failover")
-        if self.allow_recreate and self.command != "reprotect":
-            raise ValueError("allow_recreate applies only to reprotect")
         if self.reprotect_parallelism is not None and self.command != "reprotect":
             raise ValueError("reprotect_parallelism applies only to reprotect")
         if self.scheduled and self.command != "inventory":
@@ -120,7 +117,7 @@ def command_arguments(request: OperationRequest):
                         ("source_fenced", "--source-fenced"), ("accept_data_loss", "--accept-data-loss"),
                         ("allow_stale_inventory", "--allow-stale-inventory"),
                         ("use_follower_annotations", "--use-follower-annotations"),
-                        ("allow_recreate", "--allow-recreate"), ("scheduled", "--scheduled")):
+                        ("scheduled", "--scheduled")):
         if data.get(field):
             args.append(flag)
     return args

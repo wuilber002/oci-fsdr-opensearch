@@ -55,12 +55,12 @@ Reverse protection
 ------------------
 
 ``reprotect`` preserves the promoted primary and rebuilds the previous primary
-as its follower. The former-primary copies are deleted and recreated, so the
-request requires explicit authorization. ``reprotect_parallelism`` controls
+as its follower. The former-primary copies are deleted and recreated as part
+of the reprotect command. ``reprotect_parallelism`` controls
 the number of CCR bootstraps started together; use ``1`` for the least pressure
 on network, I/O and shards::
 
-    api '{"command":"reprotect","allow_recreate":true,"reprotect_parallelism":1}'
+    api '{"command":"reprotect","reprotect_parallelism":1}'
 
 The controller waits for each batch to reach its CCR checkpoint. Large indices
 may take a long time; the API job and web console remain available during the

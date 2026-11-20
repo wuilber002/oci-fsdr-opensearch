@@ -100,7 +100,7 @@ The API accepts ``discover``, ``precheck``, ``inventory``, ``readiness``,
 ``validate-switchover``, ``switchover``, ``validate-post-switchover``,
 ``reprotect``, ``failover``, ``status`` and ``cleanup``. Request properties
 match the controller flags, including ``resume``,
-``allow_recreate`` and ``reprotect_parallelism``.
+``reprotect_parallelism``.
 
 ``switchover``, ``failover`` and ``reprotect`` execute immediately because
 the API is the OCI FSDR automation interface. The API rejects the obsolete

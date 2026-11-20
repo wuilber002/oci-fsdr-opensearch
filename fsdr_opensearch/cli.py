@@ -91,7 +91,6 @@ def parser():
         if name == "inventory":
             cmd.add_argument("--scheduled", action="store_true", help="timer mode: skips disabled collection or DR in progress")
         if name == "reprotect":
-            cmd.add_argument("--allow-recreate", action="store_true", help="authorize deletion of inventoried former-primary indices")
             cmd.add_argument("--reprotect-parallelism", type=positive_integer, default=1,
                              help="maximum simultaneous CCR bootstraps; default: 1")
     return root
@@ -278,9 +277,7 @@ def main(argv=None):
                                             allow_stale_inventory=getattr(args, "allow_stale_inventory", False),
                                             use_follower_annotations=getattr(args, "use_follower_annotations", False))
                     else:
-                        result = reprotect(cfg, cs, store,
-                                           allow_recreate=args.allow_recreate,
-                                           parallelism=args.reprotect_parallelism)
+                        result = reprotect(cfg, cs, store, parallelism=args.reprotect_parallelism)
                 retention = cleanup(directory, log_dir, args.retention_days)
                 LOG.info("retention_result result=%s", retention)
                 finish(args, directory, result, cfg, started)

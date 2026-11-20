@@ -493,7 +493,7 @@ def transition(cfg, cs, store, mode, resume=False,
     return state
 
 
-def reprotect(cfg, cs, store, allow_recreate=False, parallelism=1):
+def reprotect(cfg, cs, store, parallelism=1):
     if isinstance(parallelism, bool) or not isinstance(parallelism, int) or parallelism < 1:
         raise Error("reprotect_parallelism must be a positive integer")
     state = store.read()
@@ -505,8 +505,6 @@ def reprotect(cfg, cs, store, allow_recreate=False, parallelism=1):
     old, new = tr["source"], tr["target"]
     if state["active"] != new:
         raise Error("Current primary is incompatible with the transition")
-    if not allow_recreate:
-        raise Error("Reprotect requires --allow-recreate to delete inventoried former-primary indices")
     precheck(cfg, cs)
     # Both copies still exist. Verify the marker before the former primary can
     # be deleted and recreated as a follower.
