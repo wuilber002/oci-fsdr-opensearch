@@ -107,7 +107,7 @@ tr:last-child td{border-bottom:0}
   <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span><span id="clock"></span></footer>
 </main>
 <script>
-let selected='',historyPage=0,historyRows=[];const HISTORY_PAGE_SIZE=11;
+let selected='',historyPage=0,historyRows=[];const HISTORY_PAGE_SIZE=10;
 const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(path){let r=await fetch(path);if(!r.ok)throw new Error(await r.text());return r}
 function badge(status,error){let value=error||status||'Unknown',kind=error?'error':(/^(SYNCING|PRIMARY|succeeded)$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/failed/i.test(value)?'error':'neutral');return '<span class="badge '+kind+'">'+esc(value)+'</span>'}
