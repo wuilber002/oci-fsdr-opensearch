@@ -19,10 +19,9 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,ui-sans-ser
 .nav-item:hover,.nav-item.active{background:#1b304f;color:#eaf3ff;font-weight:700}
 .nav-icon{color:var(--blue);margin-right:5px}
 .top-context{font-weight:700;white-space:nowrap}
-.pipe{color:#60738f;margin:0 9px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:7px}
 .small{font-size:12px;color:var(--muted)}
-.health{color:var(--muted);font-size:12px;white-space:nowrap}.top-clock{color:#fff;font-size:12px;font-weight:800;white-space:nowrap}
+.top-clock{color:#fff;font-size:12px;font-weight:800;white-space:nowrap}
 .content{padding:30px;max-width:1600px;margin:auto}
 .page-title{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:25px}
 .eyebrow{color:var(--blue);font-size:10px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}
@@ -81,7 +80,7 @@ tr:last-child td{border-bottom:0}
 .footer{margin-top:26px;padding-top:17px;border-top:1px solid var(--line);color:#7d91af;font-size:12px;display:flex;justify-content:space-between}
 #clusters{display:none}
 @media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.job-grid{grid-template-columns:1fr;height:auto}.job-grid>.card{min-height:520px}.top-context{display:none}}
-@media(max-width:820px){.topbar{padding:9px 18px;flex-wrap:wrap}.top-nav{order:3;flex-basis:100%;overflow:auto}.content{padding:20px}.cards,.summary{grid-template-columns:1fr}.page-title{display:block}.refresh{margin-top:14px}.health{display:none}h1{font-size:25px}th,td{padding:10px 12px}.job-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:820px){.topbar{padding:9px 18px;flex-wrap:wrap}.top-nav{order:3;flex-basis:100%;overflow:auto}.content{padding:20px}.cards,.summary{grid-template-columns:1fr}.page-title{display:block}.refresh{margin-top:14px}h1{font-size:25px}th,td{padding:10px 12px}.job-grid{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
@@ -93,8 +92,8 @@ tr:last-child td{border-bottom:0}
     <a class="nav-item" href="#active-job-section"><span class="nav-icon">≋</span>Current job</a>
     <a class="nav-item" href="#history-section"><span class="nav-icon">◫</span>Job history</a>
   </nav>
-  <div class="top-context"><span class="dot"></span>Controller <span class="pipe">|</span><span class="small">Local HTTPS service</span> <span class="pipe">|</span><span id="clock" class="top-clock"></span></div>
-  <div class="health"><span class="dot"></span>Service available</div>
+  <div class="top-context"><span class="dot"></span>Controller available</div>
+  <span id="clock" class="top-clock"></span>
 </header>
 <main class="content">
   <div class="page-title"><div><h1>OpenSearch overview</h1><div class="eyebrow">Full Stack Disaster Recovery · Cross-Cluster Replication</div><div class="subtitle">Follow protected indices, current replication direction and FSDR jobs while the controller operates.</div></div></div>
