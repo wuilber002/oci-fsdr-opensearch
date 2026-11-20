@@ -42,7 +42,7 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .role{display:inline-block;margin-left:7px;padding:2px 5px;border-radius:4px;vertical-align:middle;font-size:9px;font-weight:850;letter-spacing:.06em;line-height:1.2;background:#303846;color:#e5e7eb}
 .role.primary{background:#4a3510;color:#facc15}
 .cluster-key{position:relative;display:inline-block}
-.cluster-key-crown{position:absolute;top:-6px;left:50%;transform:translateX(-50%);color:#facc15;font-size:14px;line-height:1}
+.cluster-key-crown{position:absolute;top:-8px;left:50%;transform:translateX(-50%);color:#facc15;font-size:14px;line-height:1}
 .cluster-metrics{display:flex;align-items:baseline;justify-content:flex-end;gap:16px;margin-left:auto;color:#fff;font-size:12px;white-space:nowrap}
 .cluster-metrics strong{margin-left:5px;color:#fff;font-size:18px;font-weight:750;font-variant-numeric:tabular-nums}
 .table-wrap{overflow:auto}
