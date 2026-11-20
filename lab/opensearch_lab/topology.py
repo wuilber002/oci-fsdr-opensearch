@@ -6,6 +6,23 @@ from .core import Error, other
 from .operations import STOPPED, assert_writable, matching_status, write_blocked
 
 
+def fsdr_marker(mapping, index, cluster):
+    """Read a mapping marker with an actionable error for malformed metadata."""
+    try:
+        mappings = mapping[index]["mappings"]
+    except (KeyError, TypeError):
+        raise Error("Resposta de mapping inválida em {}/{}".format(cluster, index)) from None
+    if not isinstance(mappings, dict):
+        raise Error("Mapping inválido em {}/{}".format(cluster, index))
+    meta = mappings.get("_meta", {})
+    if not isinstance(meta, dict):
+        raise Error("_meta inválido em {}/{}; esperado objeto JSON".format(cluster, index))
+    marker = meta.get("fsdr", {})
+    if not isinstance(marker, dict):
+        raise Error("_meta.fsdr inválido em {}/{}; esperado objeto JSON".format(cluster, index))
+    return marker
+
+
 def discover_primary(cfg, cs):
     """Infer the current writer from live marked CCR followers.
 
@@ -18,8 +35,8 @@ def discover_primary(cfg, cs):
         leader = other(follower)
         for index in cs[follower].indices(scoped=False):
             mapping = cs[follower].request("GET", "/{}/_mapping".format(index))
-            meta = mapping[index]["mappings"].get("_meta", {}).get("fsdr", {})
-            if meta.get("replicate") is not True:
+            marker = fsdr_marker(mapping, index, follower)
+            if marker.get("replicate") is not True:
                 continue
             status = cs[follower].status(index)
             if status.get("status") == STOPPED:
@@ -57,9 +74,9 @@ def observe_writer(cfg, cs, state):
         active = directions.pop()
         assert_writable(cs[active], entry[active])
         mapping = cs[active].request("GET", f"/{entry[active]}/_mapping")
-        meta = mapping[entry[active]]["mappings"].get("_meta", {})
-        if (meta.get("fsdr", {}).get("demo_uuid") != state["demo_uuid"]
-                or meta.get("fsdr", {}).get("replicate") is not True):
+        marker = fsdr_marker(mapping, entry[active], active)
+        if (marker.get("demo_uuid") != state["demo_uuid"]
+                or marker.get("replicate") is not True):
             raise Error("Índice ativo não pertence ao dataset do laboratório")
         entry["uuids"][active] = cs[active].uuid(entry[active])
         selected.add(active)
