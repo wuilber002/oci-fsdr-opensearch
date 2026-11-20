@@ -1,6 +1,8 @@
 """Offline fault-injection tests. These do not emulate OCI infrastructure."""
 
 import copy
+import contextlib
+import io
 import json
 import logging
 import os
@@ -19,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lab"))
 from fsdr_opensearch.client import Client
 from fsdr_opensearch.core import Error, JsonFormatter, Store, index_name, load_config
 from opensearch_lab.dashboard import mutate_once
+from opensearch_lab import cli as lab_cli
 from opensearch_lab.core import Error as LabError, Store as LabStore, lab_settings
 from opensearch_lab.cloud import discover_runtime as lab_discover_runtime
 from opensearch_lab.cleanup import cleanup as lab_cleanup
@@ -246,6 +249,20 @@ class WorkflowTests(unittest.TestCase):
         setup(self.cfg, self.cs, self.labstore, 1, 5, 2, 1, 1)
         cleanup_cfg = dict(self.cfg, fsdr_state={"phase": "TRANSITION"})
         self.assertTrue(lab_cleanup(cleanup_cfg, self.cs, self.labstore)["dry_run"])
+
+    def test_lab_document_commands_use_the_f4_f8_batch_actions(self):
+        setup(self.cfg, self.cs, self.labstore, 1, 5, 2, 1, 1)
+        result = {"create": 101, "delete": 0, "skip": 0, "planned": {"fsdr-demo-0001": 101}}
+        with patch("opensearch_lab.cli.lab_settings", return_value=self.labstore.cfg), \
+                patch("opensearch_lab.cli.configure_logging"), \
+                patch("opensearch_lab.cli.discover_runtime", return_value=(self.labstore.cfg, {})), \
+                patch("opensearch_lab.cli.clients", return_value=self.cs), \
+                patch("opensearch_lab.cli.observe_writer", side_effect=lambda _cfg, _cs, state: state), \
+                patch("opensearch_lab.cli.mutate_batch", return_value=result) as mutate, \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, lab_cli.main("create-docs", ["--secret-id", "secret"]))
+            self.assertEqual(0, lab_cli.main("delete-docs", ["--secret-id", "secret"]))
+        self.assertEqual(["create", "delete"], [call.args[3] for call in mutate.call_args_list])
 
     def test_validate_switchover_persists_inventory_and_passes_readiness(self):
         self.seed()

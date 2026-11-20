@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Create one random 100-300 document batch in every lab index."""
+
+from opensearch_lab.bootstrap import ensure_service_user, ensure_virtualenv
+
+
+if __name__ == "__main__":
+    if not ensure_service_user(__file__):
+        raise SystemExit(1)
+    if not ensure_virtualenv(__file__):
+        raise SystemExit(1)
+    from opensearch_lab.cli import main
+    raise SystemExit(main("create-docs"))

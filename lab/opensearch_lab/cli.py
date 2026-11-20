@@ -8,9 +8,11 @@ import sys
 from .cloud import discover_runtime
 from .client import clients
 from .core import Error, LOG, Store, configure_logging, feedback, lab_settings
-from .operations import precheck
+from .operations import IDLE, precheck
 from .cleanup import cleanup
+from .dashboard import mutate_batch
 from .setup import setup
+from .topology import observe_writer
 
 
 def positive(value):
@@ -84,6 +86,19 @@ def main(command, argv=None):
             print(json.dumps(result, indent=2, ensure_ascii=False))
         elif command == "precheck":
             print(json.dumps(precheck(cfg, cs), indent=2, ensure_ascii=False))
+        elif command in ("create-docs", "delete-docs"):
+            action = "create" if command == "create-docs" else "delete"
+            with store.lock(blocking=False, name="controller"), store.lock(blocking=False):
+                state = store.read()
+                if state["phase"] not in (*IDLE, "SERVICE_RESTORED", "REPROTECTING") or not state["indices"]:
+                    raise Error("Lote recusado: setup/DR em andamento ou inventário vazio")
+                feedback("Ambiente identificado. Executando lote de {} em todos os índices do laboratório.".format(
+                    "criação" if action == "create" else "exclusão"))
+                state = observe_writer(cfg, cs, state)
+                store.write(state)
+                result = mutate_batch(cfg, cs, state, action)
+            result.update(action=action, primary=state["active"], indices=len(state["indices"]))
+            print(json.dumps(result, indent=2, ensure_ascii=False))
         else:
             store.read()
             from .dashboard import run_dashboard

@@ -51,6 +51,22 @@ python3 monitor.py --secret-id '<OCID_DO_SECRET>'
 - **F8** remove de 100 a 300 documentos aleatórios em cada índice do lab.
 - **Q** fecha o dashboard.
 
+## 4. Criar ou remover documentos sem abrir o dashboard
+
+Os comandos abaixo executam o mesmo lote das teclas F4 e F8. Cada índice recebe
+uma quantidade aleatória entre 100 e 300 documentos. A exclusão remove até essa
+quantidade, conforme houver documentos disponíveis.
+
+    # Equivalente ao F4.
+    python3 create_docs.py --secret-id '<OCID_DO_SECRET>'
+
+    # Equivalente ao F8.
+    python3 delete_docs.py --secret-id '<OCID_DO_SECRET>'
+
+Os dois comandos identificam o writer pela topologia CCR ao vivo, atuam somente
+nos índices registrados pelo próprio lab e recusam a operação durante uma
+transição ambígua ou um setup em andamento.
+
 Para remover o lab ao final, saia do dashboard e apague somente o diretório:
 
 ```bash

@@ -134,6 +134,15 @@ escala.
 Após uma troca, pressione F4 ou F8 para atuar no writer observado.
 O dashboard não promove clusters, não inicia DR nem altera DNS/LB.
 
+Os mesmos lotes podem ser executados sem abrir o dashboard::
+
+    python3 create_docs.py --secret-id <OCID_DO_SECRET>
+    python3 delete_docs.py --secret-id <OCID_DO_SECRET>
+
+Cada comando aplica, respectivamente, criação ou exclusão aleatória de 100 a
+300 documentos por índice. Eles usam a mesma validação da topologia CCR, locks
+do lab e proteção por UUID do dashboard.
+
 Logging e estado
 ----------------
 
