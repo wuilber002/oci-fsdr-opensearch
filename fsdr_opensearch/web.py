@@ -22,7 +22,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,ui-sans-ser
 .pipe{color:#60738f;margin:0 9px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);margin-right:7px}
 .small{font-size:12px;color:var(--muted)}
-.health{color:var(--muted);font-size:12px;white-space:nowrap}
+.health{color:var(--muted);font-size:12px;white-space:nowrap}.top-clock{color:#fff;font-size:12px;font-weight:800;white-space:nowrap}
 .content{padding:30px;max-width:1600px;margin:auto}
 .page-title{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;margin-bottom:25px}
 .eyebrow{color:var(--blue);font-size:10px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}
@@ -93,7 +93,7 @@ tr:last-child td{border-bottom:0}
     <a class="nav-item" href="#active-job-section"><span class="nav-icon">≋</span>Current job</a>
     <a class="nav-item" href="#history-section"><span class="nav-icon">◫</span>Job history</a>
   </nav>
-  <div class="top-context"><span class="dot"></span>Controller <span class="pipe">|</span><span class="small">Local HTTPS service</span></div>
+  <div class="top-context"><span class="dot"></span>Controller <span class="pipe">|</span><span class="small">Local HTTPS service</span> <span class="pipe">|</span><span id="clock" class="top-clock"></span></div>
   <div class="health"><span class="dot"></span>Service available</div>
 </header>
 <main class="content">
@@ -106,7 +106,7 @@ tr:last-child td{border-bottom:0}
     <section id="history-section" class="card"><div class="section-head"><h2>Controller job history</h2><span id="job-count" class="small"></span></div><div class="table-wrap"><table class="history-table"><thead><tr><th class="status-cell" aria-label="Status"></th><th>Command</th><th>Submitted</th><th>Finished</th></tr></thead><tbody id="jobs"></tbody></table></div><div id="history-pagination" class="pagination"></div></section>
   </section>
   <section class="card"><div class="section-head"><h2>What the dashboard shows</h2></div><div class="empty">Live document counts and CCR status are read-only observations. The job panel captures the controller's API execution output.</div></section>
-  <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span><span id="clock"></span></footer>
+  <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span></footer>
 </main>
 <script>
 let selected='',historyPage=0,historyRows=[];const HISTORY_PAGE_SIZE=11;
