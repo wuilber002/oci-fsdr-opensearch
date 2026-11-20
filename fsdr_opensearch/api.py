@@ -58,7 +58,6 @@ class OperationRequest(BaseModel):
     retention_days: Optional[int] = Field(default=None, ge=1)
     leader_role: Optional[str] = None
     follower_role: Optional[str] = None
-    execute: bool = False
     dry_run: bool = False
     resume: bool = False
     source_fenced: bool = False
@@ -69,14 +68,17 @@ class OperationRequest(BaseModel):
     reprotect_parallelism: Optional[int] = Field(default=None, ge=1)
     scheduled: bool = False
 
+    class Config:
+        # Reject obsolete fields such as ``execute`` rather than silently
+        # accepting a request whose DR semantics changed.
+        extra = "forbid"
+
     @model_validator(mode="after")
     def validate_request(self):
         if self.command not in COMMANDS:
             raise ValueError("unsupported command")
-        if self.execute and self.dry_run:
-            raise ValueError("execute and dry_run are mutually exclusive")
-        if (self.execute or self.dry_run) and self.command not in MUTATING:
-            raise ValueError("execute and dry_run apply only to DR operations")
+        if self.dry_run and self.command not in MUTATING:
+            raise ValueError("dry_run applies only to DR operations")
         if self.resume and self.command not in {"switchover", "failover"}:
             raise ValueError("resume applies only to switchover or failover")
         if self.command != "failover" and any((self.source_fenced, self.accept_data_loss,
@@ -117,14 +119,18 @@ def command_arguments(request: OperationRequest):
     for field, flag in options.items():
         if data.get(field) is not None:
             args.extend((flag, str(data[field])))
-    for field, flag in (("use_private_ip", "--use-private-ip"), ("execute", "--execute"),
-                        ("dry_run", "--dry-run"), ("resume", "--resume"),
+    for field, flag in (("use_private_ip", "--use-private-ip"), ("dry_run", "--dry-run"),
+                        ("resume", "--resume"),
                         ("source_fenced", "--source-fenced"), ("accept_data_loss", "--accept-data-loss"),
                         ("allow_stale_inventory", "--allow-stale-inventory"),
                         ("use_follower_annotations", "--use-follower-annotations"),
                         ("allow_recreate", "--allow-recreate"), ("scheduled", "--scheduled")):
         if data.get(field):
             args.append(flag)
+    # The API is used by OCI FSDR automation. A mutating command executes by
+    # default; dry-run remains an explicit diagnostic request.
+    if request.command in MUTATING and not request.dry_run:
+        args.append("--execute")
     return args
 
 
@@ -361,7 +367,8 @@ def dashboard_output(job_id: str):
 @app.get("/v1/commands", dependencies=[Depends(token_auth)])
 def commands():
     return {"commands": sorted(COMMANDS), "mutating_commands": sorted(MUTATING),
-            "execution": "serialized", "default_dr_mode": "dry-run"}
+            "execution": "serialized", "default_dr_mode": "execute",
+            "dry_run": "set dry_run=true explicitly for a non-mutating plan"}
 
 
 def _read_json(path, default=None):

@@ -41,8 +41,9 @@ Scope and safety
 
 Each protected index must declare ``mappings._meta.fsdr.replicate: true`` on
 the leader and follower. The controller refuses DR operations when the marker
-and discovered CCR scope differ. Planned changes remain simulations until the
-API request includes ``"execute": true``.
+and discovered CCR scope differ. API requests for switchover, failover and
+reprotect execute by default.
+Use ``"dry_run": true`` only when requesting a non-mutating plan.
 
 The separate lab/demo setup remains isolated under ``lab/`` and is not part of
 the container image, Docker Compose deployment, runtime volumes or API.

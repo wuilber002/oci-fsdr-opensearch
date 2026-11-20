@@ -99,11 +99,13 @@ Supported commands and execution mode
 The API accepts ``discover``, ``precheck``, ``inventory``, ``readiness``,
 ``validate-switchover``, ``switchover``, ``validate-post-switchover``,
 ``reprotect``, ``failover``, ``status`` and ``cleanup``. Request properties
-match the controller flags, including ``execute``, ``resume``,
+match the controller flags, including ``dry_run``, ``resume``,
 ``allow_recreate`` and ``reprotect_parallelism``.
 
-``switchover``, ``failover`` and ``reprotect`` default to dry-run behaviour.
-They mutate only when the request body explicitly has ``"execute": true``.
+``switchover``, ``failover`` and ``reprotect`` execute by default because the
+API is the OCI FSDR automation interface. To request a non-mutating plan,
+send ``"dry_run": true`` explicitly. The API rejects the obsolete
+``execute`` field.
 A restarted container marks queued or in-progress jobs as ``interrupted`` and
 does not retry them; the FSDR durable state is preserved for an explicit resume
 decision.

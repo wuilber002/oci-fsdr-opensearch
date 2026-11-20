@@ -32,11 +32,11 @@ safe to call repeatedly::
 Switchover
 ----------
 
-``switchover`` is dry-run by default. Its real execution blocks writes on the
+The API ``switchover`` command executes by default. Its execution blocks writes on the
 old primary, waits for final CCR checkpoints, stops followers on the target,
 promotes the target by enabling writes, and records durable transition state::
 
-    api '{"command":"switchover","execute":true}'
+    api '{"command":"switchover"}'
 
 The phase becomes ``SERVICE_RESTORED``. Application traffic/routing is an
 external FSDR step and must only point to the promoted cluster after its own
@@ -60,7 +60,7 @@ request requires explicit authorization. ``reprotect_parallelism`` controls
 the number of CCR bootstraps started together; use ``1`` for the least pressure
 on network, I/O and shards::
 
-    api '{"command":"reprotect","execute":true,"allow_recreate":true,"reprotect_parallelism":1}'
+    api '{"command":"reprotect","allow_recreate":true,"reprotect_parallelism":1}'
 
 The controller waits for each batch to reach its CCR checkpoint. Large indices
 may take a long time; the API job and web console remain available during the
@@ -73,7 +73,7 @@ Failover is for loss of the former primary. It requires an explicit external
 fencing attestation and acceptance of potential data loss. Do not use it for a
 planned role change::
 
-    api '{"command":"failover","execute":true,"source_fenced":true,"accept_data_loss":true}'
+    api '{"command":"failover","source_fenced":true,"accept_data_loss":true}'
 
 If the source cannot be reached and the inventory is stale, the additional
 ``allow_stale_inventory`` and ``use_follower_annotations`` flags can be used
@@ -106,5 +106,5 @@ Use ``{"command":"status"}`` to retrieve durable state, or inspect a job by
 ``GET /v1/jobs/<id>`` and its captured output by
 ``GET /v1/jobs/<id>/output``. A restarted API marks a running job as
 ``interrupted`` and never repeats it automatically. For an interrupted
-switchover or failover, submit the same command with ``"execute":true`` and
+switchover or failover, submit the command without ``"dry_run":true`` and
 ``"resume":true`` only after reviewing the state and audit log.
