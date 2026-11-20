@@ -73,6 +73,7 @@ tr:last-child td{border-bottom:0}
 .history-table{width:max-content;min-width:100%}
 .history-table th,.history-table td{padding-top:8px;padding-bottom:8px}
 .history-table .command{width:132px;white-space:normal;line-height:1.2}
+.history-table .job{cursor:pointer}.history-table .job:hover td{background:#192943}.history-table .job.selected td{background:#27466f;color:#f0f7ff}
 .empty{padding:22px;color:var(--muted);text-align:center}
 .pagination{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:auto;padding:12px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
 .pagination button{width:92px;border:1px solid var(--line);background:#18263b;color:#dbeafe;border-radius:7px;padding:6px 10px;font-weight:650}
