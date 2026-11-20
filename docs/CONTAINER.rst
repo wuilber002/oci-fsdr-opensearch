@@ -99,12 +99,22 @@ Submit a job. Requests are asynchronous and exactly one job runs at a time::
       -d '{"command":"validate-switchover"}' \
       https://127.0.0.1:1604/v1/jobs
 
-For ordinary commands, the repository helper reads the local token safely and
-uses the persisted CA certificate::
+For automation, use the repository helper. It reads the local token safely,
+uses the persisted CA certificate, submits the job, and polls until the job
+reaches a terminal state::
 
     ./scripts/fsdr-job.sh inventory
+    ./scripts/fsdr-job.sh reprotect '{"reprotect_parallelism":2}'
 
-Use the returned job ID to inspect its state and captured console output::
+The helper writes its progress to standard error and prints the final job
+record plus captured controller output to standard output. It exits with
+``0`` only when the API reports ``succeeded``. For a failed job, it preserves
+the controller exit code when it is between ``1`` and ``125``; interrupted,
+invalid, and transport failures return a non-zero exit code. This makes the
+helper suitable as an external FSDR workflow step.
+
+To inspect an asynchronously submitted job manually, use its returned job ID
+and captured console output::
 
     curl --cacert runtime/state/api-secrets/tls.crt \
       -H "Authorization: Bearer $FSDR_TOKEN" \

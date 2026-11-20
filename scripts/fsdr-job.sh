@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# Submit one authenticated controller job to the local container API.
+# Submit one authenticated controller job and wait for its terminal result.
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 command_name=${1:-}
+parameters=${2:-'{}'}
+poll_interval=${FSDR_JOB_POLL_INTERVAL:-2}
 
-if [[ -z "$command_name" || $# -ne 1 ]]; then
-  echo "Usage: $0 <command>" >&2
+if [[ -z "$command_name" || $# -gt 2 ]]; then
+  echo "Usage: $0 <command> [json-parameters]" >&2
   echo "Example: $0 inventory" >&2
+  echo "Example: $0 reprotect '{\"reprotect_parallelism\":2}'" >&2
   exit 2
 fi
 if [[ ! "$command_name" =~ ^[a-z][a-z-]*$ ]]; then
@@ -23,8 +26,66 @@ if [[ ! -r "$certificate" ]]; then
   exit 1
 fi
 
-curl --fail-with-body --cacert "$certificate" \
-  -H "Authorization: Bearer $token" \
-  -H 'Content-Type: application/json' \
-  -d "{\"command\":\"${command_name}\"}" \
-  https://127.0.0.1:1604/v1/jobs
+payload=$(python3 - "$command_name" "$parameters" <<'PY'
+import json
+import sys
+
+command, raw = sys.argv[1:]
+try:
+    parameters = json.loads(raw)
+except json.JSONDecodeError as exc:
+    raise SystemExit("Invalid JSON parameters: {}".format(exc.msg))
+if not isinstance(parameters, dict):
+    raise SystemExit("JSON parameters must be an object")
+if "command" in parameters:
+    raise SystemExit("JSON parameters must not contain command")
+parameters["command"] = command
+print(json.dumps(parameters, separators=(",", ":")))
+PY
+)
+
+api() {
+  curl --fail-with-body --silent --show-error --cacert "$certificate" \
+    -H "Authorization: Bearer $token" "$@"
+}
+
+submitted=$(api -H 'Content-Type: application/json' -d "$payload" https://127.0.0.1:1604/v1/jobs)
+job_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$submitted")
+printf 'FSDR job submitted: %s\n' "$job_id" >&2
+
+last_status=''
+while true; do
+  job=$(api "https://127.0.0.1:1604/v1/jobs/${job_id}")
+  read -r status exit_code < <(python3 -c '
+import json, sys
+job = json.load(sys.stdin)
+print(job.get("status", "unknown"), job.get("exit_code") if job.get("exit_code") is not None else "")
+' <<<"$job")
+  if [[ "$status" != "$last_status" ]]; then
+    printf 'FSDR job %s: %s\n' "$job_id" "$status" >&2
+    last_status=$status
+  fi
+  case "$status" in
+    queued|running)
+      sleep "$poll_interval"
+      ;;
+    succeeded|failed|interrupted)
+      break
+      ;;
+    *)
+      printf 'FSDR job %s returned an unknown status: %s\n' "$job_id" "$status" >&2
+      exit 1
+      ;;
+  esac
+done
+
+printf '%s\n' "$job" | python3 -m json.tool
+api "https://127.0.0.1:1604/v1/jobs/${job_id}/output" || true
+
+if [[ "$status" == succeeded ]]; then
+  exit 0
+fi
+if [[ "$exit_code" =~ ^[1-9][0-9]*$ ]] && (( exit_code <= 125 )); then
+  exit "$exit_code"
+fi
+exit 1

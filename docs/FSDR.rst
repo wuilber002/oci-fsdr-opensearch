@@ -5,6 +5,14 @@ All operations are submitted to the local HTTPS API. They are serialized: only
 one controller command is executed at a time. The web console shows the job
 state and its captured output while it runs.
 
+For an external FSDR orchestrator, prefer ``scripts/fsdr-job.sh`` over a raw
+``POST`` request. The helper waits for the submitted job to finish and returns
+``0`` only for ``succeeded``; all other terminal states and communication
+errors return non-zero. For example::
+
+    ./scripts/fsdr-job.sh validate-switchover
+    ./scripts/fsdr-job.sh reprotect '{"reprotect_parallelism":2}'
+
 Request format
 --------------
 
