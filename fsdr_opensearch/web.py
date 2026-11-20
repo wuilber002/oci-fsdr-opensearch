@@ -39,8 +39,8 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .card-head,.section-head{padding:17px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
 .card-title,.section-head h2{font-size:16px;font-weight:750;margin:0}
 .role,.badge{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;border-radius:999px;padding:5px 9px}
-.role{background:#303846;color:#e5e7eb;border:1px solid #6b7280}
-.role.primary{background:#4a3510;color:#facc15;border-color:#a67c20}
+.role{display:inline-block;margin-left:7px;padding:2px 5px;border-radius:4px;vertical-align:middle;font-size:9px;font-weight:850;letter-spacing:.06em;line-height:1.2;background:#303846;color:#e5e7eb}
+.role.primary{background:#4a3510;color:#facc15}
 .role-crown{font-size:14px;line-height:0;margin:0 5px 0 8px;vertical-align:-1px;color:#facc15}
 .count{padding:16px 18px;display:flex;justify-content:space-between;color:var(--muted)}
 .count strong{color:var(--green);font-size:20px}
@@ -61,7 +61,7 @@ tr:last-child td{border-bottom:0}
 #comparison th{color:#fff;font-weight:800}
 #comparison th.docs-heading{color:#fff;font-weight:800}
 #comparison td,#comparison .number,#comparison .count,#comparison .count strong{color:#fff;font-weight:400}
-#comparison .card-title{color:#fff;font-weight:750}
+#comparison .card-title{color:#fff;font-size:18px;font-weight:750}
 #comparison .badge{padding:0;background:transparent;color:#fff;font-size:inherit;font-weight:400;letter-spacing:normal;text-transform:none}
 .badge{display:inline-flex;align-items:center;gap:5px}
 .badge.ok{background:#133d2e;color:#7cf0ab}
