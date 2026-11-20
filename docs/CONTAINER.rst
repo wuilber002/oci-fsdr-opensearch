@@ -34,6 +34,11 @@ The command builds the image, writes ``runtime/config/config.json``, creates a
 random Bearer token and self-signed local TLS certificate, then starts the
 service.
 
+For a new VM, run this installer instead of copying a ``runtime`` directory
+from another environment. Each deployment creates its own API token, TLS key,
+discovery cache and job history. The OCI Secret OCID is the only bootstrap
+input; OCI aliases, IAM permissions and network routes must already exist.
+
 The container runs as UID/GID 10001 with a read-only root filesystem. Docker
 host networking is required so OCI Instance Principal, private DNS, routing and
 private OpenSearch endpoints are used exactly as from the executor VM. The API
@@ -93,6 +98,11 @@ Submit a job. Requests are asynchronous and exactly one job runs at a time::
       -H "Authorization: Bearer $FSDR_TOKEN" -H 'Content-Type: application/json' \
       -d '{"command":"validate-switchover"}' \
       https://127.0.0.1:1604/v1/jobs
+
+For ordinary commands, the repository helper reads the local token safely and
+uses the persisted CA certificate::
+
+    ./scripts/fsdr-job.sh inventory
 
 Use the returned job ID to inspect its state and captured console output::
 
