@@ -20,7 +20,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field, model_validator
 
 from .client import clients
@@ -30,6 +30,7 @@ from .web import DASHBOARD_HTML
 
 
 PROJECT = Path(__file__).resolve().parent.parent
+STATIC_DIRECTORY = Path(__file__).resolve().parent / "static"
 CONFIG = Path(os.environ.get("FSDR_CONFIG", "/etc/oci-opensearch-fsdr/config.json"))
 JOB_DIRECTORY = Path(os.environ.get("FSDR_API_JOB_DIR", "/var/lib/oci-opensearch-fsdr/api-jobs"))
 SECRET_DIRECTORY = Path(os.environ.get("FSDR_API_SECRET_DIR", str(JOB_DIRECTORY.parent / "api-secrets")))
@@ -290,6 +291,12 @@ def health():
 def dashboard_page():
     """A local web console. Data remains protected by the API Bearer token."""
     return DASHBOARD_HTML
+
+
+@app.get("/assets/fsdr-logo.png", include_in_schema=False)
+def dashboard_logo():
+    """Brand asset used by the unauthenticated local dashboard."""
+    return FileResponse(STATIC_DIRECTORY / "fsdr-logo.png", media_type="image/png")
 
 
 @app.get("/favicon.ico", include_in_schema=False)

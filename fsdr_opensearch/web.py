@@ -13,7 +13,7 @@ html{scroll-behavior:smooth;scroll-padding-top:88px}
 body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 .topbar{position:sticky;top:0;z-index:20;min-height:68px;padding:10px max(24px,calc((100vw - 1600px)/2));border-bottom:1px solid var(--line);background:rgba(17,26,42,.97);backdrop-filter:blur(14px);display:flex;gap:22px;align-items:center}
 .brand{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:750;white-space:nowrap}
-.brand-mark{width:30px;height:30px;display:grid;place-items:center;border-radius:9px;background:linear-gradient(135deg,#36d1dc,#5b86e5);color:#081225;font-weight:900}
+.brand-mark{display:block;width:36px;height:36px;object-fit:contain}
 .top-nav{display:flex;align-items:center;gap:4px;flex:1}
 .nav-item{border-radius:8px;padding:9px 11px;color:#9eb1cd;text-decoration:none;white-space:nowrap}
 .nav-item:hover,.nav-item.active{background:#1b304f;color:#eaf3ff;font-weight:700}
@@ -86,7 +86,7 @@ tr:last-child td{border-bottom:0}
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="brand-mark">◈</span> FSDR for OpenSearch</div>
+  <div class="brand"><img class="brand-mark" src="/assets/fsdr-logo.png" alt="FSDR for OpenSearch logo"> FSDR for OpenSearch</div>
   <nav class="top-nav" aria-label="Dashboard sections">
     <a class="nav-item active" href="#overview"><span class="nav-icon">▦</span>Dashboard</a>
     <a class="nav-item" href="#comparison-section"><span class="nav-icon">◌</span>Cluster replication</a>
@@ -105,7 +105,6 @@ tr:last-child td{border-bottom:0}
     <section id="active-job-section" class="card"><div class="section-head"><h2>Current controller job</h2><span id="active-job" class="small">No active job</span></div><pre id="active-console" class="console">No controller job is running.</pre></section>
     <section id="history-section" class="card"><div class="section-head"><h2>Controller job history</h2><span id="job-count" class="small"></span></div><div class="table-wrap"><table class="history-table"><thead><tr><th class="status-cell" aria-label="Status"></th><th>Command</th><th>Submitted</th><th>Finished</th></tr></thead><tbody id="jobs"></tbody></table></div><div id="history-pagination" class="pagination"></div></section>
   </section>
-  <section class="card"><div class="section-head"><h2>What the dashboard shows</h2></div><div class="empty">Live document counts and CCR status are read-only observations. The job panel captures the controller's API execution output.</div></section>
   <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span></footer>
 </main>
 <script>
