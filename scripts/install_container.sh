@@ -63,6 +63,10 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 install -d -m 0750 -o 10001 -g 10001 "$RUNTIME/config" "$RUNTIME/state" "$RUNTIME/log"
+# `install -d` creates a new tree correctly, but an existing deployment may
+# have been copied or managed by a host user.  The API always runs as 10001.
+chown -R 10001:10001 "$RUNTIME/config" "$RUNTIME/state" "$RUNTIME/log"
+chmod 0750 "$RUNTIME/config" "$RUNTIME/state" "$RUNTIME/log"
 CONFIG="$RUNTIME/config/config.json"
 if [[ -e "$CONFIG" && "$REPLACE_CONFIG" != true ]]; then
   echo "Configuration already exists: $CONFIG. Use --replace-config only after reviewing it." >&2

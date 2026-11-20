@@ -40,6 +40,17 @@ private OpenSearch endpoints are used exactly as from the executor VM. The API
 binds only to ``127.0.0.1:1604``. Do not expose it directly to an untrusted
 network.
 
+Configuration and durable state
+-------------------------------
+
+``runtime/config/config.json`` is the persistent bootstrap configuration. It
+contains the Vault Secret OCID and operational policy such as timeouts, RPO
+gates and private-IP use; it never contains OpenSearch passwords. The container
+reads it as UID/GID 10001 and mounts it read-only. Discovery cache, inventory,
+job records, API token and TLS material are durable runtime state under
+``runtime/state``. Keeping the two stores separate prevents an operational job
+from silently changing its own DR policy.
+
 Web console
 -----------
 
