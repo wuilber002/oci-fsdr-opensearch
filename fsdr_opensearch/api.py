@@ -450,11 +450,20 @@ def monitor_snapshot():
         view = {"name": cluster["display_name"], "id": cluster["id"],
                 "role": "primary" if state.get("active") == name else "follower",
                 "indices": [], "documents": 0, "error": None}
+        try:
+            mappings = cs[name].request("GET", "/_mapping")
+        except Exception as exc:
+            mappings = {}
+            view["error"] = "Could not read one or more index mappings ({})".format(
+                type(exc).__name__)
         for entry in state.get("indices", []):
             index = entry.get(name)
             if not index:
                 continue
-            item = {"index": index, "documents": None, "replication": None, "error": None}
+            meta = mappings.get(index, {}).get("mappings", {}).get("_meta", {})
+            marker = meta.get("fsdr", {}) if isinstance(meta, dict) else {}
+            item = {"index": index, "documents": None, "replication": None, "error": None,
+                    "fsdr_replicate": isinstance(marker, dict) and marker.get("replicate") is True}
             try:
                 item["documents"] = cs[name].count(index)
                 view["documents"] += item["documents"]

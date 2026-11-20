@@ -123,6 +123,47 @@ class ApiTests(unittest.TestCase):
             api.CONFIG = original
         self.assertEqual(data["errors"], ["Cannot prepare OpenSearch observer: Discovery is unavailable"])
 
+    def test_monitor_reports_the_live_fsdr_replication_marker(self):
+        class Client:
+            def __init__(self, marked):
+                self.marked = marked
+
+            def request(self, method, path):
+                assert (method, path) == ("GET", "/_mapping")
+                meta = {"fsdr": {"replicate": True}} if self.marked else {}
+                return {"orders": {"mappings": {"_meta": meta}}}
+
+            def count(self, index):
+                return 11
+
+            def status(self, index):
+                return {"status": "SYNCING", "syncing_details": {}}
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state = root / "state"
+                state.mkdir()
+                (state / "state.json").write_text(json.dumps({
+                    "active": "a", "phase": "PROTECTION_RESTORED",
+                    "indices": [{"a": "orders", "b": "orders"}],
+                }))
+                config = root / "config.json"
+                config.write_text(json.dumps({"secret_id": "secret", "state_dir": str(state)}))
+                api.CONFIG = config
+                cfg = {"clusters": {
+                    "a": {"id": "a-id", "display_name": "Alpha"},
+                    "b": {"id": "b-id", "display_name": "Beta"},
+                }}
+                with patch("fsdr_opensearch.api._observer_clients",
+                           return_value=(cfg, {"a": Client(True), "b": Client(False)})):
+                    data = api.monitor_snapshot()
+        finally:
+            api.CONFIG = original
+        self.assertTrue(data["clusters"]["a"]["indices"][0]["fsdr_replicate"])
+        self.assertFalse(data["clusters"]["b"]["indices"][0]["fsdr_replicate"])
+
     def test_observer_reports_incomplete_discovery_cache(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
