@@ -54,6 +54,7 @@ td{color:#c9d6e8}
 tr:last-child td{border-bottom:0}
 .number{text-align:right;color:#85efad;font-variant-numeric:tabular-nums}
 .index{font-weight:650;color:#e8eef9}
+#comparison th,#comparison td,#comparison .number{text-align:center}
 .badge{display:inline-flex;align-items:center;gap:5px}
 .badge.ok{background:#133d2e;color:#7cf0ab}
 .badge.warn{background:#4d3915;color:#fbd270}
