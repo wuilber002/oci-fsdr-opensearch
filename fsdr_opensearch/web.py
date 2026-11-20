@@ -97,7 +97,7 @@ tr:last-child td{border-bottom:0}
   <div class="health"><span class="dot"></span>Service available</div>
 </header>
 <main class="content">
-  <div class="page-title"><div><div class="eyebrow">Disaster recovery · cross-cluster replication</div><h1>OpenSearch overview</h1><div class="subtitle">Follow protected indices, current replication direction and FSDR jobs while the controller operates.</div></div><button id="refresh-now" class="refresh" onclick="manualRefresh()">↻ Refresh now</button></div>
+  <div class="page-title"><div><div class="eyebrow">Full Stack Disaster Recovery · Cross-Cluster Replication</div><h1>OpenSearch overview</h1><div class="subtitle">Follow protected indices, current replication direction and FSDR jobs while the controller operates.</div></div><button id="refresh-now" class="refresh" onclick="manualRefresh()">↻ Refresh now</button></div>
   <div id="notice" class="status-banner" hidden></div>
   <section id="overview" class="summary"></section>
   <section id="comparison-section" class="card" style="margin-bottom:22px"><div class="section-head"><h2>Replicated indices comparison</h2><span id="topology" class="small">Waiting for topology</span></div><div id="comparison" class="cards" style="padding:16px;margin:0"></div></section>
