@@ -55,7 +55,7 @@ tr:last-child td{border-bottom:0}
 .index.fsdr-protected .index-label{color:var(--green)}
 .index.fsdr-missing .index-label{color:#f87171;animation:fsdr-missing-blink 1s steps(2,end) infinite}
 .fsdr-tag{display:inline-block;margin-left:7px;padding:2px 5px;border-radius:4px;vertical-align:middle;font-size:9px;font-weight:850;letter-spacing:.06em;line-height:1.2;cursor:help}
-.fsdr-tag.protected{background:#a95a12;color:#fff4e5}
+.fsdr-tag.protected{background:#153b2c;color:#86efac}
 .fsdr-tag.missing{background:#7f1d2d;color:#fecdd3;text-decoration:line-through;text-decoration-thickness:1px}
 @keyframes fsdr-missing-blink{50%{opacity:.25}}
 #comparison th,#comparison td,#comparison .number{text-align:center}
