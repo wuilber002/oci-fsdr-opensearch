@@ -72,6 +72,10 @@ The self-signed CA certificate is persisted at
       -H "Authorization: Bearer $FSDR_TOKEN" \
       https://127.0.0.1:1604/healthz
 
+The installer keeps the token and private key private to container UID 10001.
+It grants local users traverse-only access to the certificate path and read
+access to ``tls.crt``; no API credential becomes readable as a result.
+
 Submit a job. Requests are asynchronous and exactly one job runs at a time::
 
     curl --fail-with-body --cacert runtime/state/api-secrets/tls.crt \

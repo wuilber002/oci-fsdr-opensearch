@@ -100,6 +100,11 @@ chmod 0640 "$CONFIG"
 cd "$ROOT"
 docker compose -f compose.container.yaml build --pull
 docker compose -f compose.container.yaml run --rm --no-deps fsdr-api bootstrap
+# The token and private key remain mode 0600 for UID 10001.  Permit a local
+# operator to traverse the known certificate path and use the public CA with
+# curl, without making the state directory listable.
+chmod 0711 "$RUNTIME/state" "$RUNTIME/state/api-secrets"
+chmod 0644 "$RUNTIME/state/api-secrets/tls.crt"
 docker compose -f compose.container.yaml up -d
 
 echo "FSDR API is running at https://127.0.0.1:1604"
