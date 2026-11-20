@@ -55,6 +55,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn("clusterLabel", api.DASHBOARD_HTML)
         self.assertIn("statusIcon", api.DASHBOARD_HTML)
         self.assertIn('class="status-cell"', api.DASHBOARD_HTML)
+        self.assertIn("HISTORY_PAGE_SIZE=11", api.DASHBOARD_HTML)
+        self.assertIn("history-pagination", api.DASHBOARD_HTML)
+        self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
 
     def test_new_configured_deployment_queues_initial_inventory(self):
