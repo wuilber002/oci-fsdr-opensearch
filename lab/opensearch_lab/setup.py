@@ -5,7 +5,7 @@ import time
 
 from .core import Error, LOG, other
 from .operations import STOPPED, check_shards, matching_status, precheck, wait_sync
-from .topology import observe_writer
+from .topology import discover_primary, observe_writer
 
 
 def scoped(cfg, value):
@@ -43,8 +43,9 @@ def setup(cfg, cs, store, count, docs, batch, shards, replicas, progress=None):
     params = {"count": count, "docs": docs, "batch": batch, "shards": shards, "replicas": replicas}
     precheck(cfg, cs)
     if not state:
-        state = store.new()
-        source, target = state["active"], other(state["active"])
+        source = discover_primary(cfg, cs)
+        state = store.new(source)
+        target = other(source)
         entries = [{source: scoped(cfg, f"{cfg['prefix']}{number:04d}"),
                     target: scoped(cfg, f"{cfg['prefix']}{number:04d}"),
                     "uuids": {}, "loaded": 0} for number in range(1, count + 1)]

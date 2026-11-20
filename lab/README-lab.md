@@ -2,12 +2,11 @@
 
 Este pacote é separado do runtime FSDR. Extraia-o em
 `/opt/oci-opensearch-lab` e execute os utilitários pontualmente; ele não cria
-serviço.
-Por padrão, lê somente a configuração e o inventário já existentes do FSDR.
+serviço nem lê arquivos, estado ou inventário do FSDR.
 
 Requer Python 3.9+, `venv`/`ensurepip`, `curses`, acesso ao índice Python e uma
-VM OCI com Instance Principal. O Secret indicado na configuração FSDR contém os
-dois OCIDs de cluster e as credenciais OpenSearch. O SDK consulta OCI para
+VM OCI com Instance Principal. O Secret informado ao lab contém os dois OCIDs
+de cluster e as credenciais OpenSearch. O SDK consulta OCI para
 atualizar FQDN, IP privado, versão e aliases CCR; senhas nunca são escritas no
 disco.
 
@@ -26,31 +25,19 @@ cd oci-opensearch-lab
 sha256sum -c SHA256SUMS
 ```
 
-Os wrappers reiniciam automaticamente como `fsdrsvc`, o usuário que já tem
-leitura da configuração e do estado FSDR. Deixe `fsdrsvc` como proprietário de
-`/opt/oci-opensearch-lab`, inclusive para criar `.venv` e `var/lab/`.
+Os wrappers executam com o usuário que os invocou. Esse usuário deve possuir o
+diretório do lab para criar `.venv` e `var/lab/`.
 
 Na primeira execução, `setup_demo.py` ou `monitor.py` procura `.venv`. Se ele
 não existir, pergunta se deve criá-lo e instalar `requirements.txt`. Responda
 `s` para prosseguir. Ao responder `n`, o comando encerra porque o lab não pode
 executar sem seu virtualenv.
 
-Por padrão, os scripts leem `/etc/oci-opensearch-fsdr/config.json`, usam seu
-`secret_id`, `ca_file`, `use_private_ip`, timeouts, polling e roles CCR, e leem
-`discovery.json` e `state.json` do `state_dir` configurado pelo FSDR. O
-inventário FSDR deve estar atualizado e ter primary ativo; execute `fsdr.py
-inventory` antes do primeiro setup do lab.
-Não é necessário criar arquivo de configuração do lab.
-
 O lab grava somente seus arquivos descartáveis no diretório atual:
-`var/lab/state` e `var/lab/log`. Para uma configuração FSDR em outro local, use
-`--fsdr-config /caminho/config.json`. `--secret-id` substitui somente o Secret
-consultado, mantendo a validação contra o inventário FSDR.
-
-Quando a VM não resolve o FQDN privado do outro cluster, defina
-``use_private_ip`` como ``true`` na configuração FSDR. O lab herda esse valor;
-para exceção pontual, use `--use-private-ip` ou `--no-use-private-ip`. A
-ferramenta preserva o FQDN para SNI e validação TLS.
+`var/lab/state` e `var/lab/log`. Informe o Secret com `--secret-id` ou defina
+`OPENSEARCH_LAB_SECRET_ID`. `--use-private-ip` é o padrão; use
+`--no-use-private-ip` somente se o FQDN dos clusters puder ser resolvido e
+alcançado pela VM. A ferramenta preserva o FQDN para SNI e validação TLS.
 
 As permissões e as conexões devem estar preparadas nos dois sentidos. Não altere
 para simular uma promoção. O loader não usa mais ``hooks``/``hook_timeout`` de
@@ -61,12 +48,15 @@ Criação de índices e documentos
 
 Execute a partir da raiz do projeto::
 
-    python3 setup_demo.py --indices 10 --docs-per-index 10000
+    python3 setup_demo.py --secret-id <OCID_DO_SECRET> --indices 10 --docs-per-index 10000
 
 Opções: ``--batch-size 500 --shards 1 --replicas 1``. Zero documentos é aceito.
 O setup cria somente índices novos no prefixo configurado, usa Bulk com IDs
 determinísticos e registra cada resultado. Inicia CCR, compara checkpoints e
-confere contagens após refresh. Identifica o dataset por ``mappings._meta`` e
+confere contagens após refresh. Antes da primeira criação, descobre os dois
+clusters no OCI e infere o primary pela direção CCR ao vivo dos índices que já
+possuem ``_meta.fsdr.replicate: true``. Se não existir nenhum follower marcado,
+usa o cluster ``a`` como origem determinística. Identifica o dataset por ``mappings._meta`` e
 salva seus UUIDs em estado exclusivo do lab. Os índices criados pelo lab recebem
 ``_meta.fsdr.replicate: true`` e um ``_meta.fsdr.demo_uuid`` aleatório de 64
 caracteres hexadecimais. O valor é gerado uma única vez na primeira execução
@@ -154,11 +144,11 @@ Os novos arquivos usam umask 077. Logs do dashboard vão só para arquivo.
 O setup mostra progresso curto por índice e durante a sincronização inicial.
 Eventos detalhados permanecem no JSONL.
 
-O monitor relê ``state.json`` do FSDR a cada amostra. Durante ``TRANSITION``
-ou ``REPROTECTING``, ele permanece aberto para mostrar os dois clusters, a
-fase FSDR e alterações temporárias nas contagens/CCR, mas bloqueia F4 e F8.
-Após a conclusão, identifica o novo primary diretamente pela topologia CCR.
+O monitor observa a topologia CCR diretamente em cada amostra. Durante uma
+troca ou reconstrução, a topologia ambígua ou indisponível bloqueia F4 e F8 sem
+precisar consultar o controlador FSDR. Após a conclusão, identifica o novo
+primary diretamente pela topologia CCR.
 
-O lab lê `discovery.json` e `state.json` do FSDR, mas não os altera. Seu próprio
-`var/lab/state/discovery.json` registra apenas metadados OCI necessários ao lab,
-sem senhas, e seu `state.json` identifica os índices criados pela demonstração.
+O arquivo `var/lab/state/discovery.json` registra somente metadados OCI
+necessários ao lab, sem senhas, e `state.json` identifica os índices criados
+pela demonstração. Nenhum arquivo do FSDR é lido ou alterado.

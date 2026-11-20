@@ -44,68 +44,29 @@ def index_name(value):
     return value
 
 
-def load_fsdr_context(filename, secret_override=None):
-    """Read only the installed FSDR configuration and committed inventory."""
-    path = Path(filename).resolve()
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raise Error("Configuração FSDR não encontrada: {}".format(path)) from None
-    except PermissionError:
-        raise Error("Sem permissão para ler a configuração FSDR {}; execute o lab como fsdrsvc".format(path)) from None
-    except json.JSONDecodeError as exc:
-        raise Error("JSON inválido na configuração FSDR {} (linha {}, coluna {}): {}".format(
-            path, exc.lineno, exc.colno, exc.msg)) from None
-    if not isinstance(data, dict):
-        raise Error("Configuração FSDR inválida")
-    secret_id = secret_override or data.get("secret_id")
-    if not isinstance(secret_id, str) or not secret_id:
-        raise Error("secret_id ausente; preencha a configuração FSDR ou informe --secret-id")
-    state_dir = data.get("state_dir")
-    if not isinstance(state_dir, str) or not state_dir:
-        raise Error("state_dir ausente na configuração FSDR; o lab precisa do inventário FSDR")
-    state_dir = Path(state_dir)
-    if not state_dir.is_absolute():
-        state_dir = path.parent / state_dir
-    try:
-        discovery = json.loads((state_dir / "discovery.json").read_text(encoding="utf-8"))
-        state = json.loads((state_dir / "state.json").read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raise Error("Inventário FSDR ausente em {}; execute 'fsdr.py inventory' primeiro".format(state_dir)) from None
-    except PermissionError:
-        raise Error("Sem permissão para ler o inventário FSDR em {}; execute o lab como fsdrsvc".format(state_dir)) from None
-    except json.JSONDecodeError as exc:
-        raise Error("Inventário FSDR inválido (linha {}, coluna {})".format(exc.lineno, exc.colno)) from None
-    clusters = discovery.get("clusters", {})
-    if (discovery.get("secret_id") != secret_id or set(clusters) != {"a", "b"} or
-            state.get("schema") != 2 or state.get("active") not in ("a", "b") or not state.get("indices")):
-        raise Error("Inventário FSDR incompatível, vazio ou sem primary ativo; execute 'fsdr.py inventory' primeiro")
-    return {"secret_id": secret_id, "fsdr_state_dir": str(state_dir), "discovery": discovery,
-            "state": state, "ca_file": data.get("ca_file"),
-            "use_private_ip": data.get("use_private_ip", False),
-            "request_timeout": data.get("request_timeout", 20),
-            "wait_timeout": data.get("wait_timeout", 1800),
-            "poll_interval": data.get("poll_interval", 2),
-            "leader_role": data.get("leader_role"), "follower_role": data.get("follower_role")}
+def lab_settings(args):
+    """Return configuration owned entirely by the lab package.
 
-
-def lab_settings(args, fsdr):
+    OCI discovery and the live CCR APIs supply topology.  The lab never reads
+    FSDR configuration, inventory, state or logs.
+    """
     state_dir, log_dir = Path(args.state_dir).resolve(), Path(args.log_dir).resolve()
     prefix = args.prefix
     index_name(prefix)
-    use_private_ip = fsdr["use_private_ip"] if args.use_private_ip is None else args.use_private_ip
-    return {"secret_id": fsdr["secret_id"], "fsdr_state_dir": fsdr["fsdr_state_dir"],
-            "fsdr_discovery": fsdr["discovery"], "fsdr_state": fsdr["state"],
+    secret_id = args.secret_id or os.environ.get("OPENSEARCH_LAB_SECRET_ID")
+    if not isinstance(secret_id, str) or not secret_id:
+        raise Error("Informe --secret-id ou defina OPENSEARCH_LAB_SECRET_ID")
+    return {"secret_id": secret_id,
             "prefix": prefix, "state_dir": str(state_dir), "log_dir": str(log_dir),
-            "ca_file": fsdr["ca_file"], "use_private_ip": use_private_ip,
-            "request_timeout": args.request_timeout or fsdr["request_timeout"], "read_retries": 2,
-            "wait_timeout": args.wait_timeout or fsdr["wait_timeout"],
-            "poll_interval": args.poll_interval or fsdr["poll_interval"],
+            "ca_file": args.ca_file, "use_private_ip": args.use_private_ip,
+            "request_timeout": args.request_timeout, "read_retries": 2,
+            "wait_timeout": args.wait_timeout,
+            "poll_interval": args.poll_interval,
             "dashboard_interval": args.dashboard_interval,
             "operations_per_second": args.operations_per_second,
             "create_probability": args.create_probability,
-            "leader_role": fsdr["leader_role"], "follower_role": fsdr["follower_role"],
-            "identity": hashlib.sha256(json.dumps({"secret_id": fsdr["secret_id"], "prefix": prefix},
+            "leader_role": args.leader_role, "follower_role": args.follower_role,
+            "identity": hashlib.sha256(json.dumps({"secret_id": secret_id, "prefix": prefix},
                                                     sort_keys=True).encode()).hexdigest()}
 
 
@@ -221,6 +182,6 @@ class Store:
         write_json(self.demo_identity_path, {"schema": 1, "demo_uuid": value})
         return value
 
-    def new(self):
-        return {"schema": 1, "identity": self.cfg["identity"], "active": self.cfg["initial_primary"],
+    def new(self, active):
+        return {"schema": 1, "identity": self.cfg["identity"], "active": active,
                 "phase": "READY", "indices": []}

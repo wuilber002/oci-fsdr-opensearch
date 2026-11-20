@@ -3,8 +3,6 @@
 from concurrent.futures import ThreadPoolExecutor
 import curses
 from datetime import datetime
-import json
-from pathlib import Path
 import queue
 import random
 import threading
@@ -142,24 +140,8 @@ def run_dashboard(cfg, cs, store):
     actions = queue.Queue(maxsize=1)
     snapshots = {}
     topology = {"active": "?", "error": "coletando"}
-    fsdr = {"active": cfg.get("fsdr_state", {}).get("active", "?"),
-            "phase": cfg.get("fsdr_state", {}).get("phase", "desconhecida"), "error": None}
     counters = {"create": 0, "delete": 0, "skip": 0, "error": 0}
     batch = {"status": "aguardando comando", "last": None}
-
-    def read_fsdr_state():
-        """Read the FSDR state without taking its controller lock or changing it."""
-        path = Path(cfg["fsdr_state_dir"]) / "state.json"
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            raise Error("não foi possível ler o estado FSDR ({})".format(type(exc).__name__)) from None
-        if data.get("schema") != 2 or data.get("active") not in ("a", "b") or not isinstance(data.get("phase"), str):
-            raise Error("estado FSDR inválido")
-        return {"active": data["active"], "phase": data["phase"], "error": None}
-
-    def fsdr_writing_phase():
-        return read_fsdr_state()["phase"] in ("TRANSITION", "REPROTECTING")
 
     def sample():
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -182,14 +164,6 @@ def run_dashboard(cfg, cs, store):
                     LOG.exception("lab_topology_unavailable")
                     with data_lock:
                         topology.update(active="?", error="topologia em transição/indisponível")
-                try:
-                    current_fsdr = read_fsdr_state()
-                    with data_lock:
-                        fsdr.update(current_fsdr)
-                except Exception:
-                    LOG.exception("lab_fsdr_state_unavailable")
-                    with data_lock:
-                        fsdr.update(error="estado FSDR indisponível")
                 stop.wait(cfg["dashboard_interval"])
 
     def worker():
@@ -200,8 +174,6 @@ def run_dashboard(cfg, cs, store):
                 continue
             try:
                 with store.lock(blocking=False):
-                    if fsdr_writing_phase():
-                        raise Error("Lote recusado: transição FSDR em andamento")
                     state = store.read()
                     if state["phase"] not in (*IDLE, "SERVICE_RESTORED", "REPROTECTING") or not state["indices"]:
                         raise Error("Lote recusado: setup/DR em andamento ou inventário vazio")
@@ -277,7 +249,6 @@ def run_dashboard(cfg, cs, store):
                 active = topology["active"]
                 topology_error = topology["error"]
                 batch_status = batch["status"]
-                fsdr_view = dict(fsdr)
             height, width = screen.getmaxyx()
             screen.erase()
 
@@ -331,25 +302,17 @@ def run_dashboard(cfg, cs, store):
             def cluster_attr(name):
                 return theme["cluster_a"] if name == "a" else theme["cluster_b"]
 
-            fsdr_active, fsdr_phase = fsdr_view["active"], fsdr_view["phase"]
             box(0, 0, 4, width, " OCI OpenSearch CCR / LAB ")
             observed_name = cluster_name(active) if active in ("a", "b") else "indisponível"
-            fsdr_name = cluster_name(fsdr_active) if fsdr_active in ("a", "b") else "indisponível"
             first_label = "Primary observado: "
-            middle_label = "   |   Inventário FSDR: "
-            last_label = " [{}]   |   {}".format(fsdr_phase, topology_error or "topologia identificada")
+            last_label = "   |   {}".format(topology_error or "topologia identificada")
             text(1, 2, first_label, width - 4, theme["muted"])
             first_name_col = 2 + len(first_label)
             text(1, first_name_col, observed_name, width - first_name_col - 2,
                  cluster_attr(active) if active in ("a", "b") else theme["warning"])
-            middle_col = first_name_col + len(observed_name)
-            text(1, middle_col, middle_label, width - middle_col - 2, theme["muted"])
-            fsdr_name_col = middle_col + len(middle_label)
-            text(1, fsdr_name_col, fsdr_name, width - fsdr_name_col - 2,
-                 cluster_attr(fsdr_active) if fsdr_active in ("a", "b") else theme["warning"])
-            text(1, fsdr_name_col + len(fsdr_name), last_label,
-                 width - fsdr_name_col - len(fsdr_name) - 2,
-                 theme["warning"] if topology_error or fsdr_view["error"] else theme["good"])
+            text(1, first_name_col + len(observed_name), last_label,
+                 width - first_name_col - len(observed_name) - 2,
+                 theme["warning"] if topology_error else theme["good"])
             segments(2, 2, [
                 ("F4", theme["shortcut"]), (" criar 100-300 docs por índice   ", theme["plain"]),
                 ("F8", theme["shortcut"]), (" excluir até 100-300 docs por índice   ", theme["plain"]),
@@ -446,12 +409,6 @@ def run_dashboard(cfg, cs, store):
                 break
             if key in (curses.KEY_F4, curses.KEY_F8):
                 action = "create" if key == curses.KEY_F4 else "delete"
-                with data_lock:
-                    transition_in_progress = fsdr_view["phase"] in ("TRANSITION", "REPROTECTING")
-                if transition_in_progress:
-                    with data_lock:
-                        batch.update(status="escritas pausadas: FSDR {}".format(fsdr_view["phase"]))
-                    continue
                 try:
                     actions.put_nowait(action)
                     with data_lock:

@@ -94,14 +94,14 @@ class Cloud:
                 "display_name": data.display_name, "version": data.software_version, "remote_ocids": aliases}
 
 
-def discover_runtime(cfg, fsdr):
-    """Refresh OCI metadata while preserving the FSDR pair and active direction."""
+def discover_runtime(cfg):
+    """Discover the complete lab runtime from OCI and the Secret alone."""
     cloud = Cloud(cfg["request_timeout"])
     credentials = cloud.secret(cfg["secret_id"])
     discovered = {cluster_id: cloud.cluster(cluster_id) for cluster_id in sorted(credentials)}
-    ids = [fsdr["discovery"]["clusters"][name].get("id") for name in ("a", "b")]
-    if set(ids) != set(discovered):
-        raise Error("Os clusters do Secret diferem do inventário FSDR; execute inventory no FSDR")
+    if len(discovered) != 2:
+        raise Error("O Secret do laboratório deve identificar exatamente dois clusters")
+    ids = sorted(discovered)
     if len({discovered[item]["version"] for item in ids}) != 1:
         raise Error("Os clusters do lab precisam ter a mesma versão OpenSearch")
     clusters = {}
@@ -116,12 +116,8 @@ def discover_runtime(cfg, fsdr):
                               follower_role=cfg.get("follower_role"),
                               ca_file=cfg.get("ca_file"))
         assigned[name] = credentials[cluster_id]
-    cfg = dict(cfg, clusters=clusters, initial_primary=fsdr["state"]["active"],
-               expected_version=clusters["a"]["version"])
+    cfg = dict(cfg, clusters=clusters, expected_version=clusters["a"]["version"])
     cache = {"schema": 1, "secret_id": cfg["secret_id"], "observed_at": time.time(),
-             "fsdr_state_dir": fsdr["fsdr_state_dir"], "fsdr_active": fsdr["state"]["active"],
-             "fsdr_inventory_at": fsdr["state"].get("inventory_at"),
-             "fsdr_protected_index_count": len(fsdr["state"].get("indices", [])),
              "clusters": {name: {key: value for key, value in cluster.items() if key not in ("ca_file",)}
                           for name, cluster in clusters.items()}}
     write_json(Path(cfg["state_dir"]) / "discovery.json", cache)

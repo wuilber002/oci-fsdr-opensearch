@@ -7,7 +7,7 @@ import sys
 
 from .cloud import discover_runtime
 from .client import clients
-from .core import Error, LOG, Store, configure_logging, feedback, lab_settings, load_fsdr_context
+from .core import Error, LOG, Store, configure_logging, feedback, lab_settings
 from .operations import precheck
 from .cleanup import cleanup
 from .setup import setup
@@ -29,18 +29,19 @@ def nonnegative(value):
 
 def main(command, argv=None):
     parser = argparse.ArgumentParser(description=f"OpenSearch LAB / {command}; não executa DR")
-    parser.add_argument("--fsdr-config", default="/etc/oci-opensearch-fsdr/config.json",
-                        help="configuração FSDR somente leitura")
-    parser.add_argument("--secret-id", help="OCID do Secret; substitui apenas o valor da configuração FSDR")
+    parser.add_argument("--secret-id", help="OCID do Secret OCI; alternatively set OPENSEARCH_LAB_SECRET_ID")
     parser.add_argument("--state-dir", default="var/lab/state", help="estado exclusivo do lab")
     parser.add_argument("--log-dir", default="var/lab/log", help="logs exclusivos do lab")
     parser.add_argument("--prefix", default="fsdr-demo-", help="prefixo dos índices descartáveis")
     private_ip = parser.add_mutually_exclusive_group()
-    private_ip.add_argument("--use-private-ip", dest="use_private_ip", action="store_true", default=None)
+    private_ip.add_argument("--use-private-ip", dest="use_private_ip", action="store_true", default=True)
     private_ip.add_argument("--no-use-private-ip", dest="use_private_ip", action="store_false")
-    parser.add_argument("--request-timeout", type=positive, help="padrão: configuração FSDR")
-    parser.add_argument("--wait-timeout", type=positive, help="padrão: configuração FSDR")
-    parser.add_argument("--poll-interval", type=positive, help="padrão: configuração FSDR")
+    parser.add_argument("--ca-file", help="CA bundle used to validate OpenSearch TLS")
+    parser.add_argument("--request-timeout", type=positive, default=20)
+    parser.add_argument("--wait-timeout", type=positive, default=1800)
+    parser.add_argument("--poll-interval", type=positive, default=2)
+    parser.add_argument("--leader-role", help="OpenSearch role used as CCR leader")
+    parser.add_argument("--follower-role", help="OpenSearch role used as CCR follower")
     parser.add_argument("--dashboard-interval", type=positive, default=2)
     parser.add_argument("--operations-per-second", type=positive, default=2)
     parser.add_argument("--create-probability", type=float, default=0.6)
@@ -62,14 +63,13 @@ def main(command, argv=None):
             raise Error("create-probability deve estar entre 0 e 1")
         if command == "setup" and args.execute and not args.cleanup:
             raise Error("--execute só pode ser usado com --cleanup")
-        fsdr = load_fsdr_context(args.fsdr_config, args.secret_id)
-        cfg = lab_settings(args, fsdr)
+        cfg = lab_settings(args)
         # JSONL retains diagnostics; the terminal shows only the command result.
         configure_logging(cfg, console=False)
         configured = True
         if command != "dashboard":
             feedback("Iniciando {} do laboratório. Detalhes em {}.".format(command, cfg["log_dir"]))
-        cfg, credentials = discover_runtime(cfg, fsdr)
+        cfg, credentials = discover_runtime(cfg)
         store, cs = Store(cfg), clients(cfg, credentials)
         if command == "setup":
             with store.lock(blocking=False, name="controller"), store.lock(blocking=False):

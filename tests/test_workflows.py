@@ -9,6 +9,7 @@ import socket
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.error import URLError
 import uuid
@@ -18,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lab"))
 from fsdr_opensearch.client import Client
 from fsdr_opensearch.core import Error, JsonFormatter, Store, index_name, load_config
 from opensearch_lab.dashboard import mutate_once
-from opensearch_lab.core import Error as LabError, Store as LabStore, load_fsdr_context
+from opensearch_lab.core import Error as LabError, Store as LabStore, lab_settings
 from opensearch_lab.cloud import discover_runtime as lab_discover_runtime
 from opensearch_lab.cleanup import cleanup as lab_cleanup
 from opensearch_lab.setup import setup
@@ -224,8 +225,7 @@ class WorkflowTests(unittest.TestCase):
     def test_lab_cleanup_removes_only_owned_registered_pairs(self):
         setup(self.cfg, self.cs, self.labstore, 2, 5, 2, 1, 1)
         demo_uuid = self.labstore.read()["demo_uuid"]
-        cleanup_cfg = dict(self.cfg, fsdr_state={"phase": "PROTECTION_RESTORED"})
-        plan = lab_cleanup(cleanup_cfg, self.cs, self.labstore)
+        plan = lab_cleanup(self.cfg, self.cs, self.labstore)
         self.assertTrue(plan["dry_run"])
         self.assertEqual(len(plan["indices"]), 2)
         self.assertTrue(self.cs["a"].exists("fsdr-demo-0001"))
@@ -233,7 +233,7 @@ class WorkflowTests(unittest.TestCase):
         # A reprotect-style rebuild changes UUIDs but preserves mappings.
         self.cs["b"].data["fsdr-demo-0001"]["uuid"] = uuid.uuid4().hex
 
-        result = lab_cleanup(cleanup_cfg, self.cs, self.labstore, execute=True)
+        result = lab_cleanup(self.cfg, self.cs, self.labstore, execute=True)
         self.assertEqual(result["deleted_pairs"], 2)
         self.assertFalse(self.cs["a"].data)
         self.assertFalse(self.cs["b"].data)
@@ -242,11 +242,10 @@ class WorkflowTests(unittest.TestCase):
         setup(self.cfg, self.cs, self.labstore, 1, 5, 2, 1, 1)
         self.assertEqual(self.labstore.read()["demo_uuid"], demo_uuid)
 
-    def test_lab_cleanup_refuses_when_fsdr_is_transitioning(self):
+    def test_lab_cleanup_does_not_read_fsdr_phase(self):
         setup(self.cfg, self.cs, self.labstore, 1, 5, 2, 1, 1)
         cleanup_cfg = dict(self.cfg, fsdr_state={"phase": "TRANSITION"})
-        with self.assertRaisesRegex(LabError, "bloqueada durante DR"):
-            lab_cleanup(cleanup_cfg, self.cs, self.labstore)
+        self.assertTrue(lab_cleanup(cleanup_cfg, self.cs, self.labstore)["dry_run"])
 
     def test_validate_switchover_persists_inventory_and_passes_readiness(self):
         self.seed()
@@ -341,7 +340,9 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.cs["b"].count(index), 5)
 
     def test_setup_refuses_preexisting_index(self):
-        self.cs["a"].data["fsdr-demo-0001"] = {}
+        self.cs["a"].data["fsdr-demo-0001"] = {
+            "uuid": uuid.uuid4().hex, "docs": {}, "seq": -1,
+            "mapping": {"_meta": {}}, "blocked": False, "follow": None}
         with self.assertRaises(LabError):
             self.seed()
         self.assertIsNone(self.store.read(required=False))
@@ -516,7 +517,7 @@ class WorkflowTests(unittest.TestCase):
 
 
 class CoreTests(unittest.TestCase):
-    def test_lab_uses_nested_clusters_from_fsdr_discovery(self):
+    def test_lab_discovers_clusters_from_secret_without_fsdr_inventory(self):
         first = "ocid1.opensearchcluster.oc1.eu-frankfurt-1.first"
         second = "ocid1.opensearchcluster.oc1.uk-london-1.second"
         secret = "ocid1.vaultsecret.oc1.eu-frankfurt-1.example"
@@ -537,27 +538,22 @@ class CoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, patch("opensearch_lab.cloud.Cloud", FakeLabCloud):
             cfg = {"secret_id": secret, "state_dir": directory, "log_dir": directory, "request_timeout": 20,
                    "ca_file": None, "leader_role": None, "follower_role": None}
-            fsdr = {"discovery": {"clusters": {"a": {"id": first}, "b": {"id": second}}},
-                    "state": {"active": "b"}, "fsdr_state_dir": "/var/lib/oci-opensearch-fsdr"}
-            runtime, credentials = lab_discover_runtime(cfg, fsdr)
-            self.assertEqual((runtime["clusters"]["a"]["id"], runtime["initial_primary"]), (first, "b"))
+            runtime, credentials = lab_discover_runtime(cfg)
+            self.assertEqual(runtime["clusters"]["a"]["id"], first)
             self.assertEqual(credentials["b"]["pass"], "two")
 
-    def test_lab_reads_secret_and_active_direction_from_fsdr_files(self):
+    def test_lab_settings_do_not_read_fsdr_files(self):
         secret = "ocid1.vaultsecret.oc1.eu-frankfurt-1.example"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            state_dir = root / "fsdr-state"
-            state_dir.mkdir()
-            config = root / "config.json"
-            config.write_text(json.dumps({"secret_id": secret, "state_dir": str(state_dir),
-                                          "use_private_ip": True}))
-            (state_dir / "discovery.json").write_text(json.dumps({"secret_id": secret, "clusters": {
-                "a": {"id": "ocid1.opensearchcluster.oc1.eu-frankfurt-1.a"},
-                "b": {"id": "ocid1.opensearchcluster.oc1.uk-london-1.b"}}}))
-            (state_dir / "state.json").write_text(json.dumps({"schema": 2, "active": "b", "indices": [{"a": "x", "b": "y"}]}))
-            context = load_fsdr_context(config)
-            self.assertEqual((context["secret_id"], context["state"]["active"]), (secret, "b"))
+            args = SimpleNamespace(secret_id=secret, state_dir=str(root / "lab-state"),
+                                   log_dir=str(root / "lab-log"), prefix="fsdr-demo-",
+                                   use_private_ip=True, ca_file=None, request_timeout=20,
+                                   wait_timeout=1800, poll_interval=2, dashboard_interval=2,
+                                   operations_per_second=2, create_probability=0.6,
+                                   leader_role=None, follower_role=None)
+            context = lab_settings(args)
+            self.assertEqual(context["secret_id"], secret)
             self.assertTrue(context["use_private_ip"])
 
     def test_rejects_wildcards_and_url_injection_in_index_names(self):

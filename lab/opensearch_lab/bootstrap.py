@@ -2,36 +2,17 @@
 
 import os
 from pathlib import Path
-import pwd
-import shutil
 import subprocess
 import sys
 
 
-SERVICE_USER = "fsdrsvc"
-
-
 def ensure_service_user(script_path):
-    """Re-exec as the FSDR service account before touching lab state or venv."""
-    try:
-        service = pwd.getpwnam(SERVICE_USER)
-    except KeyError:
-        print("Usuário de serviço {} não existe; execute primeiro o setup do FSDR.".format(SERVICE_USER),
-              file=sys.stderr)
-        return False
-    if os.geteuid() == service.pw_uid:
-        return True
-    sudo = shutil.which("sudo")
-    if not sudo:
-        print("O lab precisa executar como {}; sudo não está disponível.".format(SERVICE_USER), file=sys.stderr)
-        return False
-    print("Executando o laboratório como {}...".format(SERVICE_USER), file=sys.stderr)
-    try:
-        os.execv(sudo, [sudo, "-u", SERVICE_USER, "--", sys.executable,
-                        str(Path(script_path).resolve()), *sys.argv[1:]])
-    except OSError as exc:
-        print("Não foi possível iniciar como {}: {}".format(SERVICE_USER, exc), file=sys.stderr)
-        return False
+    """Compatibility hook: the lab executes as the invoking user.
+
+    It owns its venv, state and logs and has no dependency on ``fsdrsvc`` or
+    any FSDR installation.  Instance Principal supplies OCI authentication.
+    """
+    return True
 
 
 def ensure_virtualenv(script_path):

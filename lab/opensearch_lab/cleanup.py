@@ -6,7 +6,6 @@ from .core import Error, LOG, other
 from .operations import STOPPED, matching_status, precheck, write_blocked
 
 
-FSDR_IDLE = ("READY", "PROTECTION_RESTORED")
 LAB_READY = "PROTECTION_RESTORED"
 
 
@@ -26,9 +25,6 @@ def _owned(cfg, client, index, demo_uuid):
 
 
 def _preflight(cfg, cs, state):
-    if cfg["fsdr_state"].get("phase") not in FSDR_IDLE:
-        raise Error("FSDR está em {}; a limpeza do lab é bloqueada durante DR".format(
-            cfg["fsdr_state"].get("phase")))
     if state.get("phase") != LAB_READY or not state.get("indices") or not state.get("demo_uuid"):
         raise Error("Limpeza requer um setup do laboratório concluído e protegido")
     precheck(cfg, cs)
@@ -132,4 +128,4 @@ def cleanup(cfg, cs, store, execute=False, progress=None):
     if progress:
         progress("Limpeza concluída: %d pares de índices removidos. Execute o inventário FSDR antes de novo DR." % total)
     return {"deleted_indices": total * 2, "deleted_pairs": total,
-            "next_step": "Run fsdr.py inventory before the next FSDR operation."}
+            "next_step": "Run an FSDR inventory before the next FSDR operation."}

@@ -6,6 +6,32 @@ from .core import Error, other
 from .operations import STOPPED, assert_writable, matching_status, write_blocked
 
 
+def discover_primary(cfg, cs):
+    """Infer the current writer from live marked CCR followers.
+
+    The first demo has no own indices yet.  Existing indices that declare the
+    mandatory FSDR replication marker establish the current direction.  If no
+    such follower exists, ``a`` is a deterministic initial writer.
+    """
+    candidates = set()
+    for follower in ("a", "b"):
+        leader = other(follower)
+        for index in cs[follower].indices(scoped=False):
+            mapping = cs[follower].request("GET", "/{}/_mapping".format(index))
+            meta = mapping[index]["mappings"].get("_meta", {}).get("fsdr", {})
+            if meta.get("replicate") is not True:
+                continue
+            status = cs[follower].status(index)
+            if status.get("status") == STOPPED:
+                continue
+            if status.get("leader_alias") != cfg["clusters"][follower]["remote_aliases"][leader]:
+                continue
+            candidates.add(leader)
+    if len(candidates) > 1:
+        raise Error("CCR marcado indica mais de um primary; setup do laboratório recusado")
+    return candidates.pop() if candidates else "a"
+
+
 def observe_writer(cfg, cs, state):
     if not state.get("demo_uuid") or not state["indices"] or state["phase"] == "SETUP":
         raise Error("Dataset do laboratório ainda não está pronto")
