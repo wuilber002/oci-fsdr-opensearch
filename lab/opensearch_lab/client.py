@@ -82,7 +82,7 @@ class Client:
                 with self.resolution(), self.opener.open(request, timeout=self.cfg["request_timeout"]) as response:
                     payload = response.read()
                 result = json.loads(payload) if payload else {}
-                if result.get("acknowledged") is False:
+                if isinstance(result, dict) and result.get("acknowledged") is False:
                     raise Error("Operação não confirmada: {} {}".format(method, path))
                 return result
             except HTTPError as exc:
