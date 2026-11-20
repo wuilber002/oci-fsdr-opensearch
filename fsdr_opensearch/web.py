@@ -74,9 +74,11 @@ tr:last-child td{border-bottom:0}
 .status-icon.error{background:#4a1f2a;color:#fda4af}
 .status-icon.neutral{background:#25344c;color:#b7c6dc}
 .status-cell{width:1%;padding-right:5px;text-align:center}
-.job-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(420px,.85fr);gap:16px;margin-bottom:22px;align-items:stretch;height:620px}
-.job-grid>.card{display:flex;flex-direction:column;min-height:0}
-.job-grid>.card>.table-wrap,.job-grid>.card>.console{flex:1;min-height:0}
+.controller-job{margin-bottom:22px}
+.job-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(420px,.85fr);align-items:stretch;height:620px}
+.job-panel{display:flex;flex-direction:column;min-width:0;min-height:0}
+.job-panel+.job-panel{border-left:1px solid var(--line)}
+.job-panel>.table-wrap,.job-panel>.console{flex:1;min-height:0}
 .console{margin:0;min-height:360px;overflow:auto;padding:18px;background:#090f19;color:#b4f4c7;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
 .history-table{width:max-content;min-width:100%}
 .history-table th,.history-table td{padding-top:8px;padding-bottom:8px}
@@ -91,7 +93,7 @@ tr:last-child td{border-bottom:0}
 .nav-target-flash{animation:nav-target-flash 1.4s ease-out}
 @keyframes nav-target-flash{0%{box-shadow:0 0 0 2px #60a5fa,0 0 24px rgba(96,165,250,.45)}100%{box-shadow:none}}
 #clusters{display:none}
-@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.job-grid{grid-template-columns:1fr;height:auto}.job-grid>.card{min-height:520px}.top-context{display:none}}
+@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.job-grid{grid-template-columns:1fr;height:auto}.job-panel{min-height:520px}.job-panel+.job-panel{border-left:0;border-top:1px solid var(--line)}.top-context{display:none}}
 @media(max-width:820px){.topbar{padding:9px 18px;flex-wrap:wrap}.top-nav{order:3;flex-basis:100%;overflow:auto}.content{padding:20px}.cards,.summary{grid-template-columns:1fr}.page-title{display:block}.refresh{margin-top:14px}h1{font-size:25px}th,td{padding:10px 12px}.job-grid{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
@@ -101,8 +103,8 @@ tr:last-child td{border-bottom:0}
   <nav class="top-nav" aria-label="Dashboard sections">
     <a class="nav-item active" href="#overview"><span class="nav-icon">▦</span>Dashboard</a>
     <a class="nav-item" href="#comparison-section"><span class="nav-icon">◌</span>Cluster replication</a>
-    <a class="nav-item" href="#active-job-section"><span class="nav-icon">≋</span>Current job</a>
-    <a class="nav-item" href="#history-section"><span class="nav-icon">◫</span>Job history</a>
+    <a class="nav-item" href="#active-job-section"><span class="nav-icon">≋</span>Log</a>
+    <a class="nav-item" href="#history-section"><span class="nav-icon">◫</span>History</a>
   </nav>
   <div class="top-context"><span class="dot"></span>Controller available</div>
   <span id="clock" class="top-clock"></span>
@@ -112,9 +114,11 @@ tr:last-child td{border-bottom:0}
   <div id="notice" class="status-banner" hidden></div>
   <section id="overview" class="summary"></section>
   <section id="comparison-section" class="card" style="margin-bottom:22px"><div class="section-head"><h2>Replicated indices comparison</h2><span id="topology" class="small">Waiting for topology</span></div><div id="comparison" class="cards" style="padding:16px;margin:0"></div></section>
-  <section class="job-grid">
-    <section id="active-job-section" class="card"><div class="section-head"><h2>Current controller job</h2><span id="active-job" class="small">No active job</span></div><pre id="active-console" class="console">No controller job is running.</pre></section>
-    <section id="history-section" class="card"><div class="section-head"><h2>Controller job history</h2><span id="job-count" class="small"></span></div><div class="table-wrap"><table class="history-table"><thead><tr><th class="status-cell" aria-label="Status"></th><th>Command</th><th>Submitted</th><th>Finished</th></tr></thead><tbody id="jobs"></tbody></table></div><div id="history-pagination" class="pagination"></div></section>
+  <section class="card controller-job"><div class="section-head"><h2>Controller job</h2></div>
+    <div class="job-grid">
+      <section id="active-job-section" class="job-panel"><div class="section-head"><h2>Log</h2><span id="active-job" class="small">No active job</span></div><pre id="active-console" class="console">No controller job is running.</pre></section>
+      <section id="history-section" class="job-panel"><div class="section-head"><h2>History</h2><span id="job-count" class="small"></span></div><div class="table-wrap"><table class="history-table"><thead><tr><th class="status-cell" aria-label="Status"></th><th>Command</th><th>Submitted</th><th>Finished</th></tr></thead><tbody id="jobs"></tbody></table></div><div id="history-pagination" class="pagination"></div></section>
+    </div>
   </section>
   <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span></footer>
 </main>
