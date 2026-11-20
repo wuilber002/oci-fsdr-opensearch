@@ -37,6 +37,7 @@ SECRET_DIRECTORY = Path(os.environ.get("FSDR_API_SECRET_DIR", str(JOB_DIRECTORY.
 TOKEN_FILE = Path(os.environ.get("FSDR_API_TOKEN_FILE", str(SECRET_DIRECTORY / "api-token")))
 CERTIFICATE_FILE = Path(os.environ.get("FSDR_API_CERT_FILE", str(SECRET_DIRECTORY / "tls.crt")))
 PRIVATE_KEY_FILE = Path(os.environ.get("FSDR_API_KEY_FILE", str(SECRET_DIRECTORY / "tls.key")))
+MONITOR_CACHE_LOCK = threading.RLock()
 
 COMMANDS = {
     "discover", "precheck", "inventory", "readiness", "validate-switchover",
@@ -262,6 +263,11 @@ def start_inventory_schedule():
     _queue_initial_inventory(app.state.manager)
     threading.Thread(target=inventory_schedule, args=(app.state.manager,), daemon=True,
                      name="fsdr-inventory-scheduler").start()
+    # Prime the read-only dashboard data after a container restart.  It never
+    # changes OpenSearch or FSDR state, and avoids a blank first page for an
+    # already configured controller.
+    threading.Thread(target=monitor_snapshot, daemon=True,
+                     name="fsdr-dashboard-observer").start()
 
 
 def _queue_initial_inventory(manager):
@@ -408,7 +414,33 @@ def _observer_clients(configured, state_dir, secret_id):
     return cfg, observed
 
 
+def _file_version(path):
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return None
+
+
 def monitor_snapshot():
+    """Return a short-lived shared read-only snapshot for dashboard clients."""
+    configured = _read_json(CONFIG, {})
+    state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+    state_file = state_dir / "state.json"
+    signature = (str(CONFIG), _file_version(CONFIG), _file_version(state_file))
+    try:
+        lifetime = max(1, float(os.environ.get("FSDR_MONITOR_SNAPSHOT_CACHE_SECONDS", "10")))
+    except ValueError:
+        lifetime = 10
+    with MONITOR_CACHE_LOCK:
+        cached = getattr(app.state, "monitor_snapshot", None)
+        if cached and cached["signature"] == signature and time.monotonic() - cached["at"] < lifetime:
+            return cached["data"]
+        data = _monitor_snapshot(configured, state_dir, _read_json(state_file, {}))
+        app.state.monitor_snapshot = {"signature": signature, "at": time.monotonic(), "data": data}
+        return data
+
+
+def _monitor_snapshot(configured, state_dir, state):
     """Read OpenSearch safely for the web observer without changing FSDR state.
 
     It deliberately uses the saved discovery record and Vault credentials only
@@ -416,9 +448,6 @@ def monitor_snapshot():
     writes a manifest, so it can show counts and CCR status while a transition
     owns the controller.
     """
-    configured = _read_json(CONFIG, {})
-    state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
-    state = _read_json(state_dir / "state.json", {})
     secret_id = configured.get("secret_id")
     base = {"observed_at": utc_now(), "phase": state.get("phase"),
             "primary": state.get("active"), "inventory_at": state.get("inventory_at"),
@@ -456,6 +485,12 @@ def monitor_snapshot():
             mappings = {}
             view["error"] = "Could not read one or more index mappings ({})".format(
                 type(exc).__name__)
+        try:
+            counts = cs[name].document_counts(scoped=False)
+        except Exception as exc:
+            counts = {}
+            view["error"] = "Could not read one or more document counts ({})".format(
+                type(exc).__name__)
         for entry in state.get("indices", []):
             index = entry.get(name)
             if not index:
@@ -465,7 +500,9 @@ def monitor_snapshot():
             item = {"index": index, "documents": None, "replication": None, "error": None,
                     "fsdr_replicate": isinstance(marker, dict) and marker.get("replicate") is True}
             try:
-                item["documents"] = cs[name].count(index)
+                if index not in counts:
+                    raise Error("Index was not returned by the document count request")
+                item["documents"] = counts[index]
                 view["documents"] += item["documents"]
                 if state.get("active") != name:
                     status = cs[name].status(index)

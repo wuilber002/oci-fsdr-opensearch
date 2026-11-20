@@ -193,6 +193,22 @@ class Client:
             raise Error(f"Partial count on index {index}")
         return data["count"]
 
+    def document_counts(self, scoped=False):
+        """Read document totals for all visible indices in one request."""
+        pattern = quote(self.cfg["prefix"], safe="-._") + "*" if scoped else "*"
+        rows = self.request(
+            "GET", f"/_cat/indices/{pattern}?format=json&h=index,docs.count&expand_wildcards=open,closed")
+        counts = {}
+        for row in rows:
+            index = row.get("index")
+            if not index or index.startswith("."):
+                continue
+            try:
+                counts[index] = int(row.get("docs.count", 0))
+            except (TypeError, ValueError):
+                raise Error(f"Invalid document count returned for index {index}") from None
+        return counts
+
     def indices(self, scoped=True):
         pattern = quote(self.cfg["prefix"], safe="-._") + "*" if scoped else "*"
         rows = self.request("GET", f"/_cat/indices/{pattern}?format=json&h=index,status&expand_wildcards=open,closed")

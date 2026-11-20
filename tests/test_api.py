@@ -133,8 +133,9 @@ class ApiTests(unittest.TestCase):
                 meta = {"fsdr": {"replicate": True}} if self.marked else {}
                 return {"orders": {"mappings": {"_meta": meta}}}
 
-            def count(self, index):
-                return 11
+            def document_counts(self, scoped=False):
+                assert scoped is False
+                return {"orders": 11}
 
             def status(self, index):
                 return {"status": "SYNCING", "syncing_details": {}}
