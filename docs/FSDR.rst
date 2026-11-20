@@ -106,5 +106,5 @@ Use ``{"command":"status"}`` to retrieve durable state, or inspect a job by
 ``GET /v1/jobs/<id>`` and its captured output by
 ``GET /v1/jobs/<id>/output``. A restarted API marks a running job as
 ``interrupted`` and never repeats it automatically. For an interrupted
-switchover or failover, submit the command without ``"dry_run":true`` and
-``"resume":true`` only after reviewing the state and audit log.
+switchover or failover, submit the command with ``"resume":true`` only after
+reviewing the state and audit log.

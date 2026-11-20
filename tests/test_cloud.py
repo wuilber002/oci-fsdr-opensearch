@@ -177,13 +177,10 @@ class CLITests(unittest.TestCase):
         code, response = self.run_cli("inventory")
         self.assertEqual(code, 0)
         self.assertEqual(response["result"]["active"], "a")
-        before = (self.directory / "dr/state.json").read_bytes()
-        self.assertEqual(self.run_cli("switchover", "--dry-run")[0], 0)
-        self.assertEqual((self.directory / "dr/state.json").read_bytes(), before)
-        code, response = self.run_cli("switchover", "--execute")
+        code, response = self.run_cli("switchover")
         self.assertEqual((code, response["result"]["active"]), (0, "b"))
-        self.assertEqual(self.run_cli("reprotect", "--execute", "--allow-recreate")[0], 0)
-        self.assertEqual(self.run_cli("switchover", "--execute")[1]["result"]["active"], "a")
+        self.assertEqual(self.run_cli("reprotect", "--allow-recreate")[0], 0)
+        self.assertEqual(self.run_cli("switchover")[1]["result"]["active"], "a")
         self.assertEqual(LabStore(self.cfg).read()["active"], "a")  # Lab state was never changed by DR.
         for file in (self.directory / "dr").rglob("*"):
             if file.is_file():
@@ -206,7 +203,7 @@ class CLITests(unittest.TestCase):
                 patch("fsdr_opensearch.cli.Cloud", return_value=cloud), \
                 patch("fsdr_opensearch.cli.clients", return_value=self.cs):
             code = cli.main(["failover", S, "--state-dir", str(self.directory / "dr"),
-                             "--execute", "--source-fenced", "--accept-data-loss"])
+                             "--source-fenced", "--accept-data-loss"])
         self.assertEqual(code, 0)
 
     def test_dr_cli_has_no_lab_flags(self):

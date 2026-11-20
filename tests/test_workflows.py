@@ -198,13 +198,13 @@ class WorkflowTests(unittest.TestCase):
         inventory(self.cfg, self.cs, self.store)
 
     def switch(self, resume=False):
-        return transition(self.cfg, self.cs, self.store, "switchover", execute=True, resume=resume)
+        return transition(self.cfg, self.cs, self.store, "switchover", resume=resume)
 
     def protect(self):
-        return reprotect(self.cfg, self.cs, self.store, execute=True, allow_recreate=True)
+        return reprotect(self.cfg, self.cs, self.store, allow_recreate=True)
 
     def protect_with_parallelism(self, parallelism):
-        return reprotect(self.cfg, self.cs, self.store, execute=True, allow_recreate=True,
+        return reprotect(self.cfg, self.cs, self.store, allow_recreate=True,
                          parallelism=parallelism)
 
     def test_setup_and_round_trip(self):
@@ -269,7 +269,7 @@ class WorkflowTests(unittest.TestCase):
         state = self.store.read()
         state["inventory_at"] = 0
         self.store.write(state)
-        result = transition(self.cfg, self.cs, self.store, "failover", execute=True,
+        result = transition(self.cfg, self.cs, self.store, "failover",
                             source_fenced=True, accept_data_loss=True,
                             use_follower_annotations=True)
         self.assertEqual(result["phase"], "SERVICE_RESTORED")
@@ -346,19 +346,12 @@ class WorkflowTests(unittest.TestCase):
             self.seed()
         self.assertIsNone(self.store.read(required=False))
 
-    def test_dry_run_does_not_mutate_clusters_or_change_state(self):
-        self.seed()
-        before = self.store.path.read_bytes()
-        result = transition(self.cfg, self.cs, self.store, "switchover")
-        self.assertTrue(result["dry_run"])
-        self.assertEqual(before, self.store.path.read_bytes())
-
     def test_reprotect_requires_explicit_destructive_flags(self):
         self.seed()
         self.switch()
         old_uuid = self.cs["a"].uuid("fsdr-demo-0001")
         with self.assertRaises(Error):
-            reprotect(self.cfg, self.cs, self.store, execute=True)
+            reprotect(self.cfg, self.cs, self.store)
         self.assertEqual(old_uuid, self.cs["a"].uuid("fsdr-demo-0001"))
 
     def test_reprotect_resumes_lost_delete_response_without_deleting_new_follower(self):
@@ -401,7 +394,7 @@ class WorkflowTests(unittest.TestCase):
     def test_failover_requires_fencing_and_data_loss_acknowledgements(self):
         self.seed()
         with self.assertRaises(Error):
-            transition(self.cfg, self.cs, self.store, "failover", execute=True)
+            transition(self.cfg, self.cs, self.store, "failover")
 
     def test_failover_never_contacts_source(self):
         self.seed()
@@ -410,7 +403,7 @@ class WorkflowTests(unittest.TestCase):
         self.cs["b"]._sync = lambda index: None
         self.cs["a"].request = lambda *args, **kwargs: self.fail("contacted unavailable source")
         self.cs["a"].uuid = lambda *args: self.fail("read unavailable source UUID")
-        state = transition(self.cfg, self.cs, self.store, "failover", execute=True,
+        state = transition(self.cfg, self.cs, self.store, "failover",
                            source_fenced=True, accept_data_loss=True)
         self.assertEqual(state["active"], "b")
 

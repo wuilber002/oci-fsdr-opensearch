@@ -80,10 +80,6 @@ def parser():
         cmd.add_argument("--human", action="store_true", help="show human-readable summary instead of full JSON")
         cmd.add_argument("--leader-role", help="override for a custom CCR role mapped on both clusters")
         cmd.add_argument("--follower-role", help="override for a custom CCR role mapped on both clusters")
-        if name in ("switchover", "failover", "reprotect"):
-            mode = cmd.add_mutually_exclusive_group()
-            mode.add_argument("--execute", action="store_true", help="apply changes; default is simulation")
-            mode.add_argument("--dry-run", action="store_true", help="inspect and plan without changing clusters")
         if name in ("switchover", "failover"):
             cmd.add_argument("--resume", action="store_true")
         if name == "failover":
@@ -157,8 +153,7 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
     with Store({"state_dir": str(directory)}).lock(name="report"):
         write_json(Path(directory) / "last-run.json", report)
     archive(directory, "run", report)
-    if (outcome == "success" and args.command in ("switchover", "failover", "reprotect")
-            and getattr(args, "execute", False)):
+    if outcome == "success" and args.command in ("switchover", "failover", "reprotect"):
         record_evidence(directory, args.command, report)
     if outcome in ("failed", "skipped"):
         try:
@@ -277,13 +272,13 @@ def main(argv=None):
                         feedback("Validating promoted primary, write blocks, and document counts.")
                         result = validate_post_switchover(cfg, cs, store)
                     elif args.command in ("switchover", "failover"):
-                        result = transition(cfg, cs, store, args.command, execute=args.execute, resume=args.resume,
+                        result = transition(cfg, cs, store, args.command, resume=args.resume,
                                             source_fenced=getattr(args, "source_fenced", False),
                                             accept_data_loss=getattr(args, "accept_data_loss", False),
                                             allow_stale_inventory=getattr(args, "allow_stale_inventory", False),
                                             use_follower_annotations=getattr(args, "use_follower_annotations", False))
                     else:
-                        result = reprotect(cfg, cs, store, execute=args.execute,
+                        result = reprotect(cfg, cs, store,
                                            allow_recreate=args.allow_recreate,
                                            parallelism=args.reprotect_parallelism)
                 retention = cleanup(directory, log_dir, args.retention_days)

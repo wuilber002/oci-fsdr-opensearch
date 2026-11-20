@@ -20,7 +20,7 @@ class ApiTests(unittest.TestCase):
             command="reprotect", allow_recreate=True, reprotect_parallelism=2))
         self.assertEqual(args[:3], [api.sys.executable, "-m", "fsdr_opensearch.cli"])
         self.assertNotIn("fsdr.py", args)
-        self.assertIn("--execute", args)
+        self.assertNotIn("--execute", args)
         self.assertIn("--allow-recreate", args)
 
     def test_internal_module_entry_point_invokes_cli(self):
@@ -29,16 +29,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("FSDR configuration-file reference", result.stdout)
 
-    def test_api_rejects_obsolete_or_invalid_execution_mode(self):
+    def test_api_rejects_obsolete_execution_flags(self):
         with self.assertRaises(ValidationError):
             api.OperationRequest(command="inventory", execute=True)
         with self.assertRaises(ValidationError):
-            api.OperationRequest(command="inventory", dry_run=True)
-
-    def test_dry_run_is_explicit_for_mutating_api_requests(self):
-        args = api.command_arguments(api.OperationRequest(command="switchover", dry_run=True))
-        self.assertIn("--dry-run", args)
-        self.assertNotIn("--execute", args)
+            api.OperationRequest(command="switchover", dry_run=True)
 
     def test_monitor_without_configuration_has_no_side_effect(self):
         original = api.CONFIG

@@ -358,25 +358,11 @@ def assert_writable(client, index):
         raise Error(f"Index {index} still has a write block")
 
 
-def transition(cfg, cs, store, mode, execute=False, resume=False,
+def transition(cfg, cs, store, mode, resume=False,
                source_fenced=False, accept_data_loss=False, allow_stale_inventory=False,
                use_follower_annotations=False):
     state = store.read(required=False)
     annotation_fallback = None
-    if not execute:
-        if mode == "switchover" and (not state or state["phase"] in IDLE):
-            state = inventory(cfg, cs, store, persist=False)
-        if not state or not state["indices"]:
-            raise Error("Failover requires previously persisted inventory")
-        source, target = state["active"], other(state["active"])
-        required_annotation_manifest(state, source, target)
-        LOG.info("dry_run action=%s source=%s indices=%d", mode, state["active"], len(state["indices"]))
-        return {"dry_run": True, "action": mode, "active": state["active"],
-                "phase": state["phase"], "indices": state["indices"],
-                "steps": ["precheck", "inventory (switchover)", "block writes (switchover)",
-                          "wait final checkpoints (switchover)", "stop CCR", "enable target writes",
-                          "verify write blocks", "SERVICE_RESTORED"],
-                "note": "OpenSearch component only; application and routing belong to the FSDR plan"}
     if resume:
         tr = state.get("transition") if state else None
         if not tr or tr["mode"] != mode:
@@ -507,7 +493,7 @@ def transition(cfg, cs, store, mode, execute=False, resume=False,
     return state
 
 
-def reprotect(cfg, cs, store, execute=False, allow_recreate=False, parallelism=1):
+def reprotect(cfg, cs, store, allow_recreate=False, parallelism=1):
     if isinstance(parallelism, bool) or not isinstance(parallelism, int) or parallelism < 1:
         raise Error("reprotect_parallelism must be a positive integer")
     state = store.read()
@@ -519,11 +505,6 @@ def reprotect(cfg, cs, store, execute=False, allow_recreate=False, parallelism=1
     old, new = tr["source"], tr["target"]
     if state["active"] != new:
         raise Error("Current primary is incompatible with the transition")
-    if not execute:
-        return {"dry_run": True, "action": "reprotect", "leader": new, "follower": old,
-                "delete_and_recreate": [e[old] for e in state["indices"]],
-                "parallelism": parallelism,
-                "note": "Full initial copy. Offline plan; no index was changed."}
     if not allow_recreate:
         raise Error("Reprotect requires --allow-recreate to delete inventoried former-primary indices")
     precheck(cfg, cs)
