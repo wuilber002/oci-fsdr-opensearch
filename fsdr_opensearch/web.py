@@ -38,8 +38,6 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .card-head,.section-head{padding:17px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
 .card-title,.section-head h2{font-size:16px;font-weight:750;margin:0}
-.cluster-a .card-title{color:var(--yellow)}
-.cluster-b .card-title{color:var(--pink)}
 .role,.badge{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;border-radius:999px;padding:5px 9px}
 .role{background:#17345a;color:#93c5fd}
 .role.primary{background:#153b2c;color:#86efac}
@@ -52,12 +50,19 @@ th,td{padding:11px 18px;border-bottom:1px solid rgba(43,62,94,.65);white-space:n
 td{color:#c9d6e8}
 tr:last-child td{border-bottom:0}
 .number{text-align:right;color:#85efad;font-variant-numeric:tabular-nums}
-.index{font-weight:650;color:#e8eef9}
+.index{font-weight:400;color:#fff}
 .index-label{vertical-align:middle}
+.index.fsdr-protected .index-label{color:var(--green)}
+.index.fsdr-missing .index-label{color:#f87171;animation:fsdr-missing-blink 1s steps(2,end) infinite}
 .fsdr-tag{display:inline-block;margin-left:7px;padding:2px 5px;border-radius:4px;vertical-align:middle;font-size:9px;font-weight:850;letter-spacing:.06em;line-height:1.2;cursor:help}
 .fsdr-tag.protected{background:#a95a12;color:#fff4e5}
 .fsdr-tag.missing{background:#7f1d2d;color:#fecdd3;text-decoration:line-through;text-decoration-thickness:1px}
+@keyframes fsdr-missing-blink{50%{opacity:.25}}
 #comparison th,#comparison td,#comparison .number{text-align:center}
+#comparison th{color:#fff;font-weight:800}
+#comparison td,#comparison .number,#comparison .count,#comparison .count strong{color:#fff;font-weight:400}
+#comparison .card-title{color:#fff;font-weight:750}
+#comparison .badge{padding:0;background:transparent;color:#fff;font-size:inherit;font-weight:400;letter-spacing:normal;text-transform:none}
 .badge{display:inline-flex;align-items:center;gap:5px}
 .badge.ok{background:#133d2e;color:#7cf0ab}
 .badge.warn{background:#4d3915;color:#fbd270}
@@ -120,7 +125,7 @@ function stat(label,value,note){return '<div class="stat"><div class="stat-label
 function orderedClusterNames(mon){return Object.keys(mon.clusters||{}).sort((left,right)=>Number(right===mon.primary)-Number(left===mon.primary))}
 function clusterLabel(mon,key){let cluster=mon.clusters?.[key];return cluster?cluster.name+' ('+String(key).toUpperCase()+')':(key?String(key).toUpperCase():'Unavailable')}
 function fsdrTag(replicate){return replicate?'<span class="fsdr-tag protected" title="FSDR replication marker is configured." aria-label="FSDR replication marker is configured">FSDR</span>':'<span class="fsdr-tag missing" title="FSDR replication marker is missing. Replication through FSDR cannot be performed." aria-label="FSDR replication marker is missing. Replication through FSDR cannot be performed.">FSDR</span>'}
-function cluster(v,key){let role=v.role||'unknown',showCheckpoints=role==='follower',headers='<th>Index</th><th class="number">Docs</th><th>CCR status</th>'+(showCheckpoints?'<th class="number">Operations<br>Leader / follower</th>':''),rows=v.indices.map(i=>'<tr><td class="index"><span class="index-label">'+esc(i.index)+'</span>'+fsdrTag(i.fsdr_replicate)+'</td><td class="number">'+esc(i.documents)+'</td><td>'+badge(i.replication?.status,i.error)+'</td>'+(showCheckpoints?'<td class="number">'+(i.replication?.leader_checkpoint!=null?esc(i.replication.leader_checkpoint)+' / '+esc(i.replication.follower_checkpoint):'—')+'</td>':'')+'</tr>').join('');return '<article class="card cluster-'+key+'"><div class="card-head"><div class="card-title">'+esc(v.name)+'</div><span class="role '+(role==='primary'?'primary':'')+'">'+esc(role)+'</span></div><div class="count"><span>Indices<br><strong>'+v.indices.length+'</strong></span><span>Documents<br><strong>'+esc(v.documents)+'</strong></span></div><div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+ (rows||'<tr><td class="empty" colspan="'+(showCheckpoints?'4':'3')+'">No protected indices observed.</td></tr>')+'</tbody></table></div></article>'}
+function cluster(v,key){let role=v.role||'unknown',showCheckpoints=role==='follower',headers='<th>Index</th><th>CCR status</th><th class="number">Docs</th>'+(showCheckpoints?'<th class="number">Operations<br>Leader / follower</th>':''),rows=v.indices.map(i=>'<tr><td class="index '+(i.fsdr_replicate?'fsdr-protected':'fsdr-missing')+'"><span class="index-label">'+esc(i.index)+'</span>'+fsdrTag(i.fsdr_replicate)+'</td><td>'+badge(i.replication?.status,i.error)+'</td><td class="number">'+esc(i.documents)+'</td>'+(showCheckpoints?'<td class="number">'+(i.replication?.leader_checkpoint!=null?esc(i.replication.leader_checkpoint)+' / '+esc(i.replication.follower_checkpoint):'—')+'</td>':'')+'</tr>').join('');return '<article class="card cluster-'+key+'"><div class="card-head"><div class="card-title">'+esc(v.name)+'</div><span class="role '+(role==='primary'?'primary':'')+'">'+esc(role)+'</span></div><div class="count"><span>Indices<br><strong>'+v.indices.length+'</strong></span><span>Documents<br><strong>'+esc(v.documents)+'</strong></span></div><div class="table-wrap"><table><thead><tr>'+headers+'</tr></thead><tbody>'+ (rows||'<tr><td class="empty" colspan="'+(showCheckpoints?'4':'3')+'">No protected indices observed.</td></tr>')+'</tbody></table></div></article>'}
 function commandLabel(command){let parts=String(command||'—').split('-');if(parts.length<2)return esc(command);let split=Math.ceil(parts.length/2);return esc(parts.slice(0,split).join('-'))+'<br>'+esc(parts.slice(split).join('-'))}
 function activeInfo(job){let running=job&&['running','queued'].includes(job.status);document.querySelector('#active-job').textContent=job?(running?'Running: ':'Latest: ')+job.id.slice(0,12):'No active job'}
 function renderHistory(){let pages=Math.max(1,Math.ceil(historyRows.length/HISTORY_PAGE_SIZE));historyPage=Math.min(historyPage,pages-1);let start=historyPage*HISTORY_PAGE_SIZE,visible=historyRows.slice(start,start+HISTORY_PAGE_SIZE),body=document.querySelector('#jobs');body.innerHTML=visible.map(j=>'<tr class="job '+(j.id===selected?'selected':'')+'" data-job-id="'+esc(j.id)+'"><td class="status-cell">'+statusIcon(j.status)+'</td><td class="index command">'+commandLabel(j.request.command)+'</td><td>'+esc(j.submitted_at)+'</td><td>'+esc(j.finished_at)+'</td></tr>').join('')||'<tr><td class="empty" colspan="4">No jobs submitted yet.</td></tr>';body.querySelectorAll('[data-job-id]').forEach(row=>row.addEventListener('click',()=>{selected=row.dataset.jobId;output(selected);refresh()}));document.querySelector('#history-pagination').innerHTML=historyRows.length?'<button onclick="changeHistoryPage(-1)" '+(historyPage===0?'disabled':'')+'>Previous</button><span>Page '+(historyPage+1)+' / '+pages+'</span><button onclick="changeHistoryPage(1)" '+(historyPage===pages-1?'disabled':'')+'>Next</button>':''}
