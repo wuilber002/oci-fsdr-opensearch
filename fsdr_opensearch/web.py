@@ -87,6 +87,9 @@ tr:last-child td{border-bottom:0}
 .pagination button{width:92px;border:1px solid var(--line);background:#18263b;color:#dbeafe;border-radius:7px;padding:6px 10px;font-weight:650}
 .pagination button:disabled{opacity:.45;cursor:not-allowed}
 .footer{margin-top:26px;padding-top:17px;border-top:1px solid var(--line);color:#7d91af;font-size:12px;display:flex;justify-content:space-between}
+#overview,#comparison-section,#active-job-section,#history-section{scroll-margin-top:88px}
+.nav-target-flash{animation:nav-target-flash 1.4s ease-out}
+@keyframes nav-target-flash{0%{box-shadow:0 0 0 2px #60a5fa,0 0 24px rgba(96,165,250,.45)}100%{box-shadow:none}}
 #clusters{display:none}
 @media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.job-grid{grid-template-columns:1fr;height:auto}.job-grid>.card{min-height:520px}.top-context{display:none}}
 @media(max-width:820px){.topbar{padding:9px 18px;flex-wrap:wrap}.top-nav{order:3;flex-basis:100%;overflow:auto}.content{padding:20px}.cards,.summary{grid-template-columns:1fr}.page-title{display:block}.refresh{margin-top:14px}h1{font-size:25px}th,td{padding:10px 12px}.job-grid{grid-template-columns:minmax(0,1fr)}}
@@ -133,6 +136,7 @@ function renderHistory(){let pages=Math.max(1,Math.ceil(historyRows.length/HISTO
 function changeHistoryPage(delta){historyPage=Math.max(0,historyPage+delta);renderHistory()}
 async function output(id){if(!id)return;try{document.querySelector('#active-console').textContent=await (await api('/dashboard/v1/jobs/'+id+'/output')).text()}catch(e){document.querySelector('#active-console').textContent=e.message}}
 function updateClock(){document.querySelector('#clock').textContent=new Date().toLocaleString()}
+document.querySelectorAll('.top-nav a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{let target=document.querySelector(link.getAttribute('href'));if(!target)return;event.preventDefault();target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'',link.getAttribute('href'));target.classList.remove('nav-target-flash');void target.offsetWidth;target.classList.add('nav-target-flash')}));
 async function refresh(){
   try{
     let [monitorResponse,jobsResponse]=await Promise.all([api('/dashboard/v1/monitor'),api('/dashboard/v1/jobs')]);
