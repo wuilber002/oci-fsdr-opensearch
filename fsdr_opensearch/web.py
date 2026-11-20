@@ -28,7 +28,6 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,ui-sans-ser
 .eyebrow{color:var(--blue);font-size:10px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}
 h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .subtitle{color:#a8b9d2;max-width:720px}
-.refresh{border:1px solid var(--line);background:#18263b;color:#dbeafe;border-radius:8px;padding:9px 13px;font-weight:650;white-space:nowrap}.refresh:disabled{opacity:.7;cursor:wait}
 .status-banner{border:1px solid #244e71;background:#102a45;border-radius:10px;padding:12px 15px;color:#bbdefb;margin-bottom:18px}
 .summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:22px}
 .stat,.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
@@ -97,7 +96,7 @@ tr:last-child td{border-bottom:0}
   <div class="health"><span class="dot"></span>Service available</div>
 </header>
 <main class="content">
-  <div class="page-title"><div><h1>OpenSearch overview</h1><div class="eyebrow">Full Stack Disaster Recovery · Cross-Cluster Replication</div><div class="subtitle">Follow protected indices, current replication direction and FSDR jobs while the controller operates.</div></div><button id="refresh-now" class="refresh" onclick="manualRefresh()">↻ Refresh now</button></div>
+  <div class="page-title"><div><h1>OpenSearch overview</h1><div class="eyebrow">Full Stack Disaster Recovery · Cross-Cluster Replication</div><div class="subtitle">Follow protected indices, current replication direction and FSDR jobs while the controller operates.</div></div></div>
   <div id="notice" class="status-banner" hidden></div>
   <section id="overview" class="summary"></section>
   <section id="comparison-section" class="card" style="margin-bottom:22px"><div class="section-head"><h2>Replicated indices comparison</h2><span id="topology" class="small">Waiting for topology</span></div><div id="comparison" class="cards" style="padding:16px;margin:0"></div></section>
@@ -122,9 +121,7 @@ function activeInfo(job){let running=job&&['running','queued'].includes(job.stat
 function renderHistory(){let pages=Math.max(1,Math.ceil(historyRows.length/HISTORY_PAGE_SIZE));historyPage=Math.min(historyPage,pages-1);let start=historyPage*HISTORY_PAGE_SIZE,visible=historyRows.slice(start,start+HISTORY_PAGE_SIZE),body=document.querySelector('#jobs');body.innerHTML=visible.map(j=>'<tr class="job '+(j.id===selected?'selected':'')+'" data-job-id="'+esc(j.id)+'"><td class="status-cell">'+statusIcon(j.status)+'</td><td class="index command">'+commandLabel(j.request.command)+'</td><td>'+esc(j.submitted_at)+'</td><td>'+esc(j.finished_at)+'</td></tr>').join('')||'<tr><td class="empty" colspan="4">No jobs submitted yet.</td></tr>';body.querySelectorAll('[data-job-id]').forEach(row=>row.addEventListener('click',()=>{selected=row.dataset.jobId;output(selected);refresh()}));document.querySelector('#history-pagination').innerHTML=historyRows.length?'<button onclick="changeHistoryPage(-1)" '+(historyPage===0?'disabled':'')+'>Previous</button><span>Page '+(historyPage+1)+' / '+pages+'</span><button onclick="changeHistoryPage(1)" '+(historyPage===pages-1?'disabled':'')+'>Next</button>':''}
 function changeHistoryPage(delta){historyPage=Math.max(0,historyPage+delta);renderHistory()}
 async function output(id){if(!id)return;try{document.querySelector('#active-console').textContent=await (await api('/dashboard/v1/jobs/'+id+'/output')).text()}catch(e){document.querySelector('#active-console').textContent=e.message}}
-async function refresh(manual=false){
-  const button=document.querySelector('#refresh-now');
-  if(manual&&button){button.disabled=true;button.textContent='Refreshing…'}
+async function refresh(){
   try{
     let [mon,jobs]=await Promise.all([(await api('/dashboard/v1/monitor')).json(),(await api('/dashboard/v1/jobs')).json()]);
     let primary=clusterLabel(mon,mon.primary),topology=Object.keys(mon.clusters).length===2?'Topology identified':'Topology unavailable',inventory=mon.inventory_at?new Date(mon.inventory_at*1000).toLocaleString():'No inventory';
@@ -142,11 +139,8 @@ async function refresh(manual=false){
     document.querySelector('#clock').textContent='Last refresh: '+new Date().toLocaleString();
   }catch(e){
     let notice=document.querySelector('#notice');notice.textContent='Dashboard refresh failed: '+e.message;notice.hidden=false;
-  }finally{
-    if(manual&&button){button.disabled=false;button.textContent='↻ Refresh now'}
   }
 }
-function manualRefresh(){return refresh(true)}
-refresh();setInterval(()=>refresh(),5000);
+refresh();setInterval(refresh,5000);
 </script>
 </body></html>'''
