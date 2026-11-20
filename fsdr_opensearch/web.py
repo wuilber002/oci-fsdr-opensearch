@@ -123,6 +123,7 @@ function activeInfo(job){let running=job&&['running','queued'].includes(job.stat
 function renderHistory(){let pages=Math.max(1,Math.ceil(historyRows.length/HISTORY_PAGE_SIZE));historyPage=Math.min(historyPage,pages-1);let start=historyPage*HISTORY_PAGE_SIZE,visible=historyRows.slice(start,start+HISTORY_PAGE_SIZE),body=document.querySelector('#jobs');body.innerHTML=visible.map(j=>'<tr class="job '+(j.id===selected?'selected':'')+'" data-job-id="'+esc(j.id)+'"><td class="status-cell">'+statusIcon(j.status)+'</td><td class="index command">'+commandLabel(j.request.command)+'</td><td>'+esc(j.submitted_at)+'</td><td>'+esc(j.finished_at)+'</td></tr>').join('')||'<tr><td class="empty" colspan="4">No jobs submitted yet.</td></tr>';body.querySelectorAll('[data-job-id]').forEach(row=>row.addEventListener('click',()=>{selected=row.dataset.jobId;output(selected);refresh()}));document.querySelector('#history-pagination').innerHTML=historyRows.length?'<button onclick="changeHistoryPage(-1)" '+(historyPage===0?'disabled':'')+'>Previous</button><span>Page '+(historyPage+1)+' / '+pages+'</span><button onclick="changeHistoryPage(1)" '+(historyPage===pages-1?'disabled':'')+'>Next</button>':''}
 function changeHistoryPage(delta){historyPage=Math.max(0,historyPage+delta);renderHistory()}
 async function output(id){if(!id)return;try{document.querySelector('#active-console').textContent=await (await api('/dashboard/v1/jobs/'+id+'/output')).text()}catch(e){document.querySelector('#active-console').textContent=e.message}}
+function updateClock(){document.querySelector('#clock').textContent=new Date().toLocaleString()}
 async function refresh(){
   try{
     let [mon,jobs]=await Promise.all([(await api('/dashboard/v1/monitor')).json(),(await api('/dashboard/v1/jobs')).json()]);
@@ -138,11 +139,11 @@ async function refresh(){
     activeInfo(active);historyRows=jobs.jobs;
     document.querySelector('#job-count').textContent=historyRows.length+' recent job(s)';
     renderHistory();if(selected)output(selected);
-    document.querySelector('#clock').textContent='Last refresh: '+new Date().toLocaleString();
   }catch(e){
     let notice=document.querySelector('#notice');notice.textContent='Dashboard refresh failed: '+e.message;notice.hidden=false;
   }
 }
+updateClock();setInterval(updateClock,1000);
 refresh();setInterval(refresh,5000);
 </script>
 </body></html>'''
