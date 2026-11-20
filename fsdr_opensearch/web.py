@@ -71,6 +71,7 @@ tr:last-child td{border-bottom:0}
 .job-grid>.card>.table-wrap,.job-grid>.card>.console{flex:1;min-height:0}
 .console{margin:0;min-height:360px;overflow:auto;padding:18px;background:#090f19;color:#b4f4c7;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
 .history-table{width:max-content;min-width:100%}
+.history-table th,.history-table td{padding-top:8px;padding-bottom:8px}
 .history-table .command{width:132px;white-space:normal;line-height:1.2}
 .empty{padding:22px;color:var(--muted);text-align:center}
 .pagination{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:auto;padding:12px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
