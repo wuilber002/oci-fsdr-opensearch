@@ -138,9 +138,9 @@ async function refresh(){
     let [monitorResponse,jobsResponse]=await Promise.all([api('/dashboard/v1/monitor'),api('/dashboard/v1/jobs')]);
     let [mon,jobs]=await Promise.all([monitorResponse.json(),jobsResponse.json()]);
     let primary=clusterLabel(mon,mon.primary),topology=Object.keys(mon.clusters).length===2?'Topology identified':'Topology unavailable',inventory=mon.inventory_at?new Date(mon.inventory_at*1000).toLocaleString():'No inventory';
-    let docs=Object.values(mon.clusters).reduce((n,c)=>n+(c.documents||0),0);
+    let docs=mon.clusters?.[mon.primary]?.documents||0;
     document.querySelector('#notice').hidden=true;
-    document.querySelector('#overview').innerHTML=stat('Observed primary',primary,'Current write target')+stat('FSDR inventory',mon.phase||'Unavailable',inventory)+stat('Topology',topology,'CCR direction observed')+stat('Protected documents',docs,'Combined cluster count');
+    document.querySelector('#overview').innerHTML=stat('Observed primary',primary,'Current write target')+stat('FSDR inventory',mon.phase||'Unavailable',inventory)+stat('Topology',topology,'CCR direction observed')+stat('Protected documents',docs,'Unique documents on primary');
     document.querySelector('#comparison').innerHTML=orderedClusterNames(mon).map(k=>cluster(mon.clusters[k],k)).join('');
     document.querySelector('#topology').textContent=topology;
     let active=jobs.jobs.find(j=>j.status==='running')||jobs.jobs.find(j=>j.status==='queued')||jobs.jobs[0];
