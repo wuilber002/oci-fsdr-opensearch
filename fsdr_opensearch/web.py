@@ -64,6 +64,10 @@ tr:last-child td{border-bottom:0}
 .fsdr-tag.missing{background:#7f1d2d;color:#fecdd3;text-decoration:line-through;text-decoration-thickness:1px}
 #comparison th,#comparison td,#comparison .number{text-align:center}
 #comparison th{color:#fff;font-weight:800}
+#comparison thead tr{height:51px}
+#comparison th{height:51px;padding-top:0;padding-bottom:0;vertical-align:middle}
+#comparison tbody tr{height:44px}
+#comparison tbody td{height:44px;box-sizing:border-box;padding-top:0;padding-bottom:0;vertical-align:middle}
 #comparison th.docs-heading{color:#fff;font-weight:800}
 #comparison td,#comparison .number{color:#fff;font-weight:400}
 #comparison .card-title{color:#fff;font-size:18px;font-weight:750}
