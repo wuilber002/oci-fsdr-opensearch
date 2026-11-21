@@ -74,6 +74,9 @@ tr:last-child td{border-bottom:0}
 .status-icon.warn{background:#4d3915;color:#fbd270}
 .status-icon.error{background:#4a1f2a;color:#fda4af}
 .status-icon.neutral{background:#25344c;color:#b7c6dc}
+.status-icon.running{font-size:0}
+.status-icon.running::after{content:"";width:10px;height:10px;border:2px solid rgba(255,255,255,.34);border-top-color:#fff;border-radius:50%;animation:status-spinner .75s linear infinite}
+@keyframes status-spinner{to{transform:rotate(360deg)}}
 .status-cell{width:1%;padding-right:5px;text-align:center}
 .controller-job{margin-bottom:22px}
 .job-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(420px,.85fr);align-items:stretch;height:620px}
@@ -128,7 +131,7 @@ let selected='',historyPage=0,historyRows=[];const HISTORY_PAGE_SIZE=11;
 const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(path){let r=await fetch(path);if(!r.ok)throw new Error(await r.text());return r}
 function badge(status,error){let value=error||status||'Unknown',kind=error?'error':(/^(SYNCING|PRIMARY|succeeded)$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/failed/i.test(value)?'error':'neutral');return '<span class="badge '+kind+'">'+esc(value)+'</span>'}
-function statusIcon(status){let symbols={queued:'◷',running:'◌',succeeded:'✓',failed:'✕',interrupted:'!'},value=status||'unknown',kind=/^succeeded$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/^failed$/i.test(value)?'error':'neutral';return '<span class="status-icon '+kind+'" title="'+esc(value)+'" aria-label="'+esc(value)+'">'+(symbols[value]||'?')+'</span>'}
+function statusIcon(status){let symbols={queued:'◷',running:'◌',succeeded:'✓',failed:'✕',interrupted:'!'},value=status||'unknown',kind=/^succeeded$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/^failed$/i.test(value)?'error':'neutral',state=String(value).toLowerCase().replace(/[^a-z0-9_-]/g,'-');return '<span class="status-icon '+kind+' '+state+'" title="'+esc(value)+'" aria-label="'+esc(value)+'">'+(symbols[value]||'?')+'</span>'}
 function stat(label,value,note){return '<div class="stat"><div class="stat-label">'+esc(label)+'</div><div class="stat-value">'+esc(value)+'</div><div class="stat-note">'+esc(note)+'</div></div>'}
 function orderedClusterNames(mon){return Object.keys(mon.clusters||{}).sort((left,right)=>Number(right===mon.primary)-Number(left===mon.primary))}
 function clusterLabel(mon,key){let cluster=mon.clusters?.[key];return cluster?cluster.name+' ('+String(key).toUpperCase()+')':(key?String(key).toUpperCase():'Unavailable')}
