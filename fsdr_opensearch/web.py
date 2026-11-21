@@ -58,7 +58,7 @@ tr:last-child td{border-bottom:0}
 .index.index-warning .index-label{color:var(--orange);font-weight:400}
 .index-info-cell{width:0;min-width:0;max-width:0;padding:0!important;position:relative;overflow:visible}
 .index-entry{position:relative;display:inline-block}
-.index-info{position:absolute;left:-29px;top:50%;z-index:2;display:block;width:24px;height:24px;transform:translateY(-50%);color:var(--orange);font-size:20px;font-weight:400;line-height:24px;text-align:center;cursor:help}
+.index-info{position:absolute;left:-29px;top:50%;z-index:2;display:block;width:24px;height:24px;transform:translateY(-50%);color:var(--orange);font-size:18px;font-weight:400;line-height:24px;text-align:center;cursor:help}
 .index-info.problem{color:#f87171}
 .fsdr-tag{display:inline-block;margin-left:7px;padding:2px 5px;border-radius:4px;vertical-align:middle;font-size:9px;font-weight:850;letter-spacing:.06em;line-height:1.2;cursor:help}
 .fsdr-tag.protected{background:#153b2c;color:#86efac}
