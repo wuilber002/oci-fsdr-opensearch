@@ -84,8 +84,8 @@ tr:last-child td{border-bottom:0}
 .status-icon.warn{background:#512b12;color:#fdba74}
 .status-icon.error{background:#4a1f2a;color:#fda4af}
 .status-icon.neutral{background:#25344c;color:#b7c6dc}
-.status-icon.running{font-size:0}
-.status-icon.running::after{content:"";width:10px;height:10px;border:2px solid rgba(255,255,255,.34);border-top-color:#fff;border-radius:50%;animation:status-spinner .75s linear infinite}
+.status-icon.running{position:relative;font-size:0}
+.status-icon.running::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px;box-sizing:border-box;border:2px solid rgba(255,255,255,.34);border-top-color:#fff;border-radius:50%;animation:status-spinner .75s linear infinite}
 @keyframes status-spinner{to{transform:rotate(360deg)}}
 .status-cell{width:1%;padding-right:5px;text-align:center}
 .controller-job{margin-bottom:22px}
