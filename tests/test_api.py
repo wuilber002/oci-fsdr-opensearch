@@ -1,6 +1,7 @@
 """Container API unit tests without an OCI connection or a running container."""
 
 from pathlib import Path
+import asyncio
 import subprocess
 import sys
 import tempfile
@@ -50,7 +51,7 @@ class ApiTests(unittest.TestCase):
 
     def test_dashboard_is_self_contained_and_does_not_embed_token(self):
         self.assertIn("/dashboard/v1/monitor", api.DASHBOARD_HTML)
-        self.assertIn("Current controller job", api.DASHBOARD_HTML)
+        self.assertIn("Controller job", api.DASHBOARD_HTML)
         self.assertIn("Replicated indices comparison", api.DASHBOARD_HTML)
         self.assertIn("top-nav", api.DASHBOARD_HTML)
         self.assertIn("job-grid", api.DASHBOARD_HTML)
@@ -59,8 +60,35 @@ class ApiTests(unittest.TestCase):
         self.assertIn('class="status-cell"', api.DASHBOARD_HTML)
         self.assertIn("HISTORY_PAGE_SIZE=11", api.DASHBOARD_HTML)
         self.assertIn("history-pagination", api.DASHBOARD_HTML)
+        self.assertIn("EventSource", api.DASHBOARD_HTML)
+        self.assertIn("/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
+
+    def test_dashboard_job_log_stream_sends_output_then_end(self):
+        class Manager:
+            def __init__(self, directory):
+                self.directory = Path(directory)
+
+            def read(self, job_id):
+                if job_id != "job":
+                    raise KeyError(job_id)
+                return {"status": "succeeded"}
+
+            def output_path(self, job_id):
+                return self.directory / (job_id + ".output")
+
+        async def read_events(manager):
+            return [event async for event in api.dashboard_output_stream(manager, "job", 0)]
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = Manager(directory)
+            manager.output_path("job").write_text("completed\n", encoding="utf-8")
+            events = asyncio.run(read_events(manager))
+        self.assertEqual(len(events), 2)
+        self.assertIn("event: output", events[0])
+        self.assertIn('"completed\\n"', events[0])
+        self.assertIn("event: end", events[1])
 
     def test_new_configured_deployment_queues_initial_inventory(self):
         class Manager:

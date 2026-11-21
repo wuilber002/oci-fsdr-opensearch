@@ -19,8 +19,8 @@ import time
 import uuid
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from .client import clients
@@ -364,6 +364,57 @@ def dashboard_output(job_id: str):
     except FileNotFoundError:
         data = b""
     return Response(content=data, media_type="text/plain; charset=utf-8")
+
+
+async def dashboard_output_stream(manager, job_id, offset):
+    """Tail one job's output as SSE without retaining output in memory."""
+    terminal = {"succeeded", "failed", "interrupted"}
+    last_keepalive = time.monotonic()
+    while True:
+        try:
+            job = manager.read(job_id)
+        except KeyError:
+            yield "event: error\ndata: job not found\n\n"
+            return
+        output_path = manager.output_path(job_id)
+        try:
+            size = output_path.stat().st_size
+            if size < offset:
+                offset = 0
+            with output_path.open("rb") as stream:
+                stream.seek(offset)
+                data = stream.read(64 * 1024)
+        except FileNotFoundError:
+            data = b""
+        if data:
+            offset += len(data)
+            payload = data.decode("utf-8", errors="replace")
+            yield "id: {}\nevent: output\ndata: {}\n\n".format(offset, json.dumps(payload))
+            continue
+        if job.get("status") in terminal:
+            yield "id: {}\nevent: end\ndata: {}\n\n".format(offset, json.dumps(job["status"]))
+            return
+        if time.monotonic() - last_keepalive >= 15:
+            yield ": keepalive\n\n"
+            last_keepalive = time.monotonic()
+        await asyncio.sleep(0.4)
+
+
+@app.get("/dashboard/v1/jobs/{job_id}/events")
+async def dashboard_output_events(job_id: str, request: Request):
+    """Stream a selected job log to the read-only local dashboard via SSE."""
+    manager = api_manager()
+    try:
+        manager.read(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found") from None
+    try:
+        offset = max(0, int(request.headers.get("last-event-id", "0")))
+    except ValueError:
+        offset = 0
+    return StreamingResponse(dashboard_output_stream(manager, job_id, offset),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/v1/commands", dependencies=[Depends(token_auth)])
