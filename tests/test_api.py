@@ -63,6 +63,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("EventSource", api.DASHBOARD_HTML)
         self.assertIn("/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events", api.DASHBOARD_HTML)
         self.assertIn("/dashboard/v1/jobs/events", api.DASHBOARD_HTML)
+        self.assertIn("setInterval(refreshComparison,5000)", api.DASHBOARD_HTML)
+        self.assertNotIn("setInterval(refresh,5000)", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
 
