@@ -7,7 +7,7 @@ DASHBOARD_HTML = r'''<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OpenSearch FSDR</title>
 <style>
-:root{color-scheme:dark;--bg:#0b1120;--surface:#141e30;--line:#2b3e5e;--text:#e9eef8;--muted:#91a4c3;--blue:#60a5fa;--green:#4ade80;--yellow:#fbbf24;--pink:#f472d0;--radius:12px}
+:root{color-scheme:dark;--bg:#0b1120;--surface:#141e30;--line:#2b3e5e;--text:#e9eef8;--muted:#91a4c3;--blue:#60a5fa;--green:#4ade80;--orange:#fb923c;--pink:#f472d0;--radius:12px}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scroll-padding-top:88px}
 body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
@@ -55,9 +55,9 @@ tr:last-child td{border-bottom:0}
 .index{font-weight:750;color:#fff}
 .index-label{vertical-align:middle}
 .index.index-problem .index-label{color:#f87171;font-weight:400}
-.index.index-warning .index-label{color:#fbbf24;font-weight:400}
+.index.index-warning .index-label{color:var(--orange);font-weight:400}
 .index-info-cell{width:0;min-width:0;max-width:0;padding:0!important;position:relative;overflow:visible}
-.index-info{position:absolute;left:8px;top:50%;z-index:2;display:block;width:12px;height:12px;transform:translateY(-50%);color:#fbbf24;font-size:10px;font-weight:800;line-height:12px;text-align:center;cursor:help}
+.index-info{position:absolute;left:8px;top:50%;z-index:2;display:block;width:12px;height:12px;transform:translateY(-50%);color:var(--orange);font-size:10px;font-weight:800;line-height:12px;text-align:center;cursor:help}
 .index-info.problem{color:#f87171}
 .fsdr-tag{display:inline-block;margin-left:7px;padding:2px 5px;border-radius:4px;vertical-align:middle;font-size:9px;font-weight:850;letter-spacing:.06em;line-height:1.2;cursor:help}
 .fsdr-tag.protected{background:#153b2c;color:#86efac}
@@ -70,12 +70,12 @@ tr:last-child td{border-bottom:0}
 #comparison .badge{padding:0;background:transparent;color:#fff;font-size:inherit;font-weight:400;letter-spacing:normal;text-transform:none}
 .badge{display:inline-flex;align-items:center;gap:5px}
 .badge.ok{background:#133d2e;color:#7cf0ab}
-.badge.warn{background:#4d3915;color:#fbd270}
+.badge.warn{background:#512b12;color:#fdba74}
 .badge.error{background:#4a1f2a;color:#fda4af}
 .badge.neutral{background:#25344c;color:#b7c6dc}
 .status-icon{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:14px;font-weight:900}
 .status-icon.ok{background:#133d2e;color:#7cf0ab}
-.status-icon.warn{background:#4d3915;color:#fbd270}
+.status-icon.warn{background:#512b12;color:#fdba74}
 .status-icon.error{background:#4a1f2a;color:#fda4af}
 .status-icon.neutral{background:#25344c;color:#b7c6dc}
 .status-icon.running{font-size:0}
