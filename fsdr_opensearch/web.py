@@ -137,7 +137,7 @@ tr:last-child td{border-bottom:0}
   <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span></footer>
 </main>
 <script>
-let selected='',historyPage=0,historyRows=[],outputStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=11;
+let selected='',historyPage=0,historyRows=[],outputStream=null,jobsStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=11;
 const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(path){let r=await fetch(path);if(!r.ok)throw new Error(await r.text());return r}
 function badge(status,error){let value=error||status||'Unknown',kind=error?'error':(/^(SYNCING|PRIMARY|succeeded)$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/failed/i.test(value)?'error':'neutral'),longStatus=!error&&String(value).toUpperCase()==='REPLICATION NOT IN PROGRESS',label=longStatus?'REPLICATION NOT<br>IN PROGRESS':esc(value);return '<span class="badge '+kind+(longStatus?' long-status':'')+'">'+label+'</span>'}
@@ -154,29 +154,25 @@ function activeInfo(job){let running=job&&['running','queued'].includes(job.stat
 function renderHistory(){let pages=Math.max(1,Math.ceil(historyRows.length/HISTORY_PAGE_SIZE));historyPage=Math.min(historyPage,pages-1);let start=historyPage*HISTORY_PAGE_SIZE,visible=historyRows.slice(start,start+HISTORY_PAGE_SIZE),body=document.querySelector('#jobs');body.innerHTML=visible.map(j=>'<tr class="job '+(j.id===selected?'selected':'')+'" data-job-id="'+esc(j.id)+'"><td class="status-cell">'+statusIcon(j.status)+'</td><td class="index command">'+commandLabel(j.request.command)+'</td><td>'+esc(j.submitted_at)+'</td><td>'+esc(j.finished_at)+'</td></tr>').join('')||'<tr><td class="empty" colspan="4">No jobs submitted yet.</td></tr>';body.querySelectorAll('[data-job-id]').forEach(row=>row.addEventListener('click',()=>{selected=row.dataset.jobId;renderHistory();output(selected)}));document.querySelector('#history-pagination').innerHTML=historyRows.length?'<button onclick="changeHistoryPage(-1)" '+(historyPage===0?'disabled':'')+'>Previous</button><span>Page '+(historyPage+1)+' / '+pages+'</span><button onclick="changeHistoryPage(1)" '+(historyPage===pages-1?'disabled':'')+'>Next</button>':''}
 function changeHistoryPage(delta){historyPage=Math.max(0,historyPage+delta);renderHistory()}
 function output(id){if(!id||streamingJob===id||loadedOutput===id)return;if(outputStream)outputStream.close();streamingJob=id;loadedOutput='';let console=document.querySelector('#active-console');console.textContent='';let stream=new EventSource('/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events');outputStream=stream;stream.addEventListener('output',event=>{if(selected!==id)return;console.textContent+=JSON.parse(event.data);console.scrollTop=console.scrollHeight});stream.addEventListener('end',()=>{if(outputStream===stream){stream.close();outputStream=null;streamingJob='';loadedOutput=id}});stream.addEventListener('error',()=>{if(stream.readyState===EventSource.CLOSED&&outputStream===stream){outputStream=null;streamingJob='';console.textContent||='Unable to stream this job log.'}})}
+function applyJobs(jobs){let active=jobs.jobs.find(j=>j.status==='running')||jobs.jobs.find(j=>j.status==='queued')||jobs.jobs[0];if(!selected&&active)selected=active.id;if(active&&['running','queued'].includes(active.status))selected=active.id;activeInfo(active);historyRows=jobs.jobs;document.querySelector('#job-count').textContent=historyRows.length+' recent job(s)';renderHistory();if(selected)output(selected)}
+async function refreshJobs(){let response=await api('/dashboard/v1/jobs');applyJobs(await response.json())}
+function connectJobsStream(){if(jobsStream)return;jobsStream=new EventSource('/dashboard/v1/jobs/events');jobsStream.addEventListener('jobs',()=>{refreshJobs().catch(()=>{})})}
 function updateClock(){document.querySelector('#clock').textContent=new Date().toLocaleString()}
 document.querySelectorAll('.top-nav a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{let target=document.querySelector(link.getAttribute('href'));if(!target)return;event.preventDefault();target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'',link.getAttribute('href'));target.classList.remove('nav-target-flash');void target.offsetWidth;target.classList.add('nav-target-flash')}));
 async function refresh(){
   try{
-    let [monitorResponse,jobsResponse]=await Promise.all([api('/dashboard/v1/monitor'),api('/dashboard/v1/jobs')]);
-    let [mon,jobs]=await Promise.all([monitorResponse.json(),jobsResponse.json()]);
+    let mon=await (await api('/dashboard/v1/monitor')).json();
     let primary=clusterLabel(mon,mon.primary),topology=Object.keys(mon.clusters).length===2?'Topology identified':'Topology unavailable',inventory=mon.inventory_at?new Date(mon.inventory_at*1000).toLocaleString():'No inventory';
     let docs=mon.clusters?.[mon.primary]?.documents||0;
     document.querySelector('#notice').hidden=true;
     document.querySelector('#overview').innerHTML=stat('Observed primary',primary,'Current write target')+stat('FSDR inventory',mon.phase||'Unavailable',inventory)+stat('Topology',topology,'CCR direction observed')+stat('Protected documents',docs,'Unique documents on primary');
     document.querySelector('#comparison').innerHTML=orderedClusterNames(mon).map(k=>cluster(mon.clusters[k],k,mon.phase)).join('');
     document.querySelector('#topology').textContent=topology;
-    let active=jobs.jobs.find(j=>j.status==='running')||jobs.jobs.find(j=>j.status==='queued')||jobs.jobs[0];
-    if(!selected&&active)selected=active.id;
-    if(active&&['running','queued'].includes(active.status))selected=active.id;
-    activeInfo(active);historyRows=jobs.jobs;
-    document.querySelector('#job-count').textContent=historyRows.length+' recent job(s)';
-    renderHistory();if(selected)output(selected);
   }catch(e){
     let notice=document.querySelector('#notice');notice.textContent='Dashboard refresh failed: '+e.message;notice.hidden=false;
   }
 }
 updateClock();setInterval(updateClock,1000);
-refresh();setInterval(refresh,5000);
+refresh();refreshJobs();connectJobsStream();setInterval(refresh,5000);
 </script>
 </body></html>'''

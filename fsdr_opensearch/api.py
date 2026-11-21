@@ -128,6 +128,8 @@ def command_arguments(request: OperationRequest):
 class JobManager:
     def __init__(self):
         self.jobs = queue.Queue()
+        self._job_change_condition = threading.Condition()
+        self._job_revision = 0
         JOB_DIRECTORY.mkdir(parents=True, exist_ok=True, mode=0o700)
         self._mark_interrupted()
         self.worker = threading.Thread(target=self._work, daemon=True, name="fsdr-api-worker")
@@ -151,6 +153,20 @@ class JobManager:
         temporary.write_text(json.dumps(job, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.chmod(temporary, 0o600)
         temporary.replace(target)
+        with self._job_change_condition:
+            self._job_revision += 1
+            self._job_change_condition.notify_all()
+
+    def job_revision(self):
+        with self._job_change_condition:
+            return self._job_revision
+
+    def wait_for_job_change(self, revision, timeout=15):
+        """Wait for an in-process job lifecycle update without polling disk."""
+        with self._job_change_condition:
+            if self._job_revision == revision:
+                self._job_change_condition.wait(timeout)
+            return self._job_revision
 
     def submit(self, request):
         job_id = uuid.uuid4().hex
@@ -400,6 +416,19 @@ async def dashboard_output_stream(manager, job_id, offset):
         await asyncio.sleep(0.4)
 
 
+async def dashboard_jobs_stream(manager, revision):
+    """Publish job lifecycle updates to dashboard clients through SSE."""
+    sent_initial = False
+    while True:
+        current = manager.job_revision()
+        if not sent_initial or current != revision:
+            revision = current
+            sent_initial = True
+            yield "id: {}\nevent: jobs\ndata: {}\n\n".format(
+                revision, json.dumps({"revision": revision}))
+        revision = await asyncio.to_thread(manager.wait_for_job_change, revision, 15)
+
+
 @app.get("/dashboard/v1/jobs/{job_id}/events")
 async def dashboard_output_events(job_id: str, request: Request):
     """Stream a selected job log to the read-only local dashboard via SSE."""
@@ -413,6 +442,18 @@ async def dashboard_output_events(job_id: str, request: Request):
     except ValueError:
         offset = 0
     return StreamingResponse(dashboard_output_stream(manager, job_id, offset),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/dashboard/v1/jobs/events")
+async def dashboard_jobs_events(request: Request):
+    """Notify the public local dashboard when a job changes lifecycle state."""
+    try:
+        revision = max(0, int(request.headers.get("last-event-id", "0")))
+    except ValueError:
+        revision = 0
+    return StreamingResponse(dashboard_jobs_stream(api_manager(), revision),
                              media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

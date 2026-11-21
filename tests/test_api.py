@@ -62,6 +62,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("history-pagination", api.DASHBOARD_HTML)
         self.assertIn("EventSource", api.DASHBOARD_HTML)
         self.assertIn("/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events", api.DASHBOARD_HTML)
+        self.assertIn("/dashboard/v1/jobs/events", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
 
@@ -89,6 +90,26 @@ class ApiTests(unittest.TestCase):
         self.assertIn("event: output", events[0])
         self.assertIn('"completed\\n"', events[0])
         self.assertIn("event: end", events[1])
+
+    def test_dashboard_jobs_stream_announces_current_revision(self):
+        class Manager:
+            def job_revision(self):
+                return 7
+
+            def wait_for_job_change(self, revision, timeout):
+                return revision
+
+        async def first_event():
+            stream = api.dashboard_jobs_stream(Manager(), 0)
+            try:
+                return await anext(stream)
+            finally:
+                await stream.aclose()
+
+        event = asyncio.run(first_event())
+        self.assertIn("id: 7", event)
+        self.assertIn("event: jobs", event)
+        self.assertIn('"revision": 7', event)
 
     def test_new_configured_deployment_queues_initial_inventory(self):
         class Manager:
