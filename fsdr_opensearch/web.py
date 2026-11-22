@@ -31,9 +31,12 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .summary{display:grid;grid-template-columns:max-content max-content max-content minmax(0,1fr);gap:14px;margin-bottom:22px}
 .stat,.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
 .stat{padding:17px}
+.summary .stat{min-height:122px;box-sizing:border-box;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
 .stat-label{font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:750;text-transform:uppercase}
 .stat-value{font-size:24px;font-weight:750;margin-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.summary .stat-value,.summary .state-card .state-value{align-self:center;margin:0}
 .stat-note{margin-top:6px;color:var(--muted);font-size:12px}
+.summary .stat-note{margin:0;align-self:end}
 .stat.topology-unidirectional{background:#10291f;border-color:#256342}
 .stat.topology-unidirectional .stat-value{color:#fff;font-weight:750}
 .stat.topology-bidirectional{background:#351821;border-color:#7f1d2d}
