@@ -62,6 +62,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("statusIcon", api.DASHBOARD_HTML)
         self.assertIn("rejected:'⊘'", api.DASHBOARD_HTML)
         self.assertIn("rejectionReason", api.DASHBOARD_HTML)
+        self.assertIn("STATUS_ICON_TEMPLATE", api.DASHBOARD_HTML)
+        self.assertIn("status-icon-glyph", api.DASHBOARD_HTML)
         self.assertIn('class="status-cell"', api.DASHBOARD_HTML)
         self.assertIn("HISTORY_PAGE_SIZE=11", api.DASHBOARD_HTML)
         self.assertIn("history-pagination", api.DASHBOARD_HTML)

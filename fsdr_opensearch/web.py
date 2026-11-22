@@ -104,12 +104,16 @@ tr:last-child td{border-bottom:0}
 .badge.warn{background:#512b12;color:#fdba74}
 .badge.error{background:#4a1f2a;color:#fda4af}
 .badge.neutral{background:#25344c;color:#b7c6dc}
-.status-icon{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:14px;font-weight:900}
+.status-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;width:22px;height:22px;border-radius:50%;font-size:14px;font-weight:900;line-height:1}
+.status-icon-glyph{display:flex;width:100%;height:100%;align-items:center;justify-content:center;line-height:1;transform:translateY(-.5px)}
 .status-icon.ok{background:#133d2e;color:#7cf0ab}
 .status-icon.warn{background:#512b12;color:#fdba74}
 .status-icon.error{background:#4a1f2a;color:#fda4af}
 .status-icon.neutral{background:#25344c;color:#b7c6dc}
 .status-icon.running{position:relative;font-size:0}
+.status-icon.rejected .status-icon-glyph{position:relative;font-size:0;transform:none}
+.status-icon.rejected .status-icon-glyph::before{content:"";position:absolute;width:11px;height:11px;border:2px solid currentColor;border-radius:50%}
+.status-icon.rejected .status-icon-glyph::after{content:"";position:absolute;width:15px;height:2px;border-radius:2px;background:currentColor;transform:rotate(-58deg)}
 .status-icon.running::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px;box-sizing:border-box;border:2px solid rgba(255,255,255,.34);border-top-color:#fff;border-radius:50%;animation:status-spinner .75s linear infinite}
 @keyframes status-spinner{to{transform:rotate(360deg)}}
 .status-cell{width:1%;padding-right:5px;text-align:center}
@@ -168,7 +172,8 @@ let selected='',historyPage=0,historyRows=[],latestJob=null,outputStream=null,da
 const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function badge(status,error){let value=error||status||'Unknown',kind=error?'error':(/^(SYNCING|PRIMARY|succeeded)$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/failed/i.test(value)?'error':'neutral'),longStatus=!error&&String(value).toUpperCase()==='REPLICATION NOT IN PROGRESS',label=longStatus?'REPLICATION NOT<br>IN PROGRESS':esc(value);return '<span class="badge '+kind+(longStatus?' long-status':'')+'">'+label+'</span>'}
 function rejectionReason(job){let rejected=job?.rejection||{},unmet=(rejected.requirements||[]).filter(item=>!item.met),details=unmet.map(item=>item.detail||item.explanation).filter(Boolean);return details.length?details.join(' · '):(job?.reason||rejected.code||'Workflow prerequisites are not satisfied.')}
-function statusIcon(job){let value=job?.status||'unknown',symbols={queued:'◷',running:'◌',succeeded:'✓',failed:'✕',interrupted:'!',rejected:'⊘'},kind=/^succeeded$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/^(failed|rejected)$/i.test(value)?'error':'neutral',state=String(value).toLowerCase().replace(/[^a-z0-9_-]/g,'-'),title=value==='rejected'?'Rejected — '+rejectionReason(job):value;return '<span class="status-icon '+kind+' '+state+'" title="'+esc(title)+'" aria-label="'+esc(title)+'">'+(symbols[value]||'?')+'</span>'}
+const STATUS_ICON_TEMPLATE=Object.freeze({rootClass:'status-icon',glyphClass:'status-icon-glyph',symbols:Object.freeze({queued:'◷',running:'◌',succeeded:'✓',failed:'✕',interrupted:'!',rejected:'⊘'}),kind(value){return /^succeeded$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/^(failed|rejected)$/i.test(value)?'error':'neutral'}});
+function statusIcon(job,template=STATUS_ICON_TEMPLATE){let value=job?.status||'unknown',kind=template.kind(value),state=String(value).toLowerCase().replace(/[^a-z0-9_-]/g,'-'),title=value==='rejected'?'Rejected — '+rejectionReason(job):value;return '<span class="'+template.rootClass+' '+kind+' '+state+'" title="'+esc(title)+'" aria-label="'+esc(title)+'"><span class="'+template.glyphClass+'" aria-hidden="true">'+esc(template.symbols[value]||'?')+'</span></span>'}
 function summaryCard({label,value,note,classes='',tooltip='',valueClass='stat-value',valueHtml=false,noteHtml=false}){let output=valueHtml?value:esc(value),detail=noteHtml?note:esc(note),title=tooltip?' title="'+esc(tooltip)+'" aria-label="'+esc(tooltip)+'"':'';return '<article class="summary-card '+classes+'"><div class="stat-label">'+esc(label)+'</div><div class="'+valueClass+'"'+title+'>'+output+'</div><div class="stat-note">'+detail+'</div></article>'}
 function displayTime(value){if(!value)return 'No status update';let date=new Date(typeof value==='number'?value*1000:value);return Number.isNaN(date.getTime())?'No status update':date.toLocaleString()}
 function stateLabel(phase){return String(phase).toLowerCase().split('_').map(word=>esc(word.charAt(0).toUpperCase()+word.slice(1))).join('<br>')}
