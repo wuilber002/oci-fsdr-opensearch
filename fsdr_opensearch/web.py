@@ -28,7 +28,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,ui-sans-ser
 h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .subtitle{color:#a8b9d2;max-width:720px}
 .status-banner{border:1px solid #244e71;background:#102a45;border-radius:10px;padding:12px 15px;color:#bbdefb;margin-bottom:18px}
-.summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:22px}
+.summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,1fr) max-content minmax(0,1fr);gap:14px;margin-bottom:22px}
 .stat,.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
 .stat{padding:17px}
 .stat-label{font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:750;text-transform:uppercase}
@@ -38,6 +38,7 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .stat.topology-unidirectional .stat-value{color:#fff;font-weight:750}
 .stat.topology-bidirectional{background:#351821;border-color:#7f1d2d}
 .stat.topology-bidirectional .stat-value{color:#fff;font-weight:750;cursor:help}
+.topology-card{width:max-content;min-width:0;white-space:nowrap}
 .state-card{min-width:240px}
 .state-card .state-value{min-height:42px;margin-top:7px;display:flex;align-items:center;color:#fff;font-size:20px;font-weight:800;line-height:1.05}
 .state-card.state-ready,.state-card.state-protection-restored{background:#10291f;border-color:#256342}
@@ -156,7 +157,7 @@ function stat(label,value,note,style='',tooltip=''){return '<div class="stat '+s
 function displayTime(value){if(!value)return 'No status update';let date=new Date(typeof value==='number'?value*1000:value);return Number.isNaN(date.getTime())?'No status update':date.toLocaleString()}
 function stateStat(mon){let phase=mon.phase||'Unavailable',failed=Boolean((mon.errors||[]).length)||['failed','interrupted'].includes(latestJob?.status),tone='state-'+phase.toLowerCase().replace(/_/g,'-'),timestamp=mon.state_updated_at,reason='';if(failed){tone='state-error';timestamp=latestJob?.finished_at||latestJob?.started_at||latestJob?.submitted_at||timestamp;reason=latestJob?.reason||mon.errors?.[0]||'The latest FSDR operation did not complete successfully.'}let label=esc(phase).replace(/_/g,'<br>');return '<div class="stat state-card '+tone+'"><div class="stat-label">FSDR State</div><div class="state-value"'+(reason?' title="'+esc(reason)+'" aria-label="'+esc(reason)+'"':'')+'>'+label+'</div><div class="stat-note">'+esc(displayTime(timestamp))+'</div></div>'}
 function topologyState(mon){return mon.topology||((mon.primary&&Object.keys(mon.clusters||{}).length===2)?'unidirectional':'unavailable')}
-function topologyStat(topology){if(topology==='bidirectional'){let explanation='CCR is active in both directions. FSDR supports only one primary-to-follower direction because switchover and reprotect would otherwise be ambiguous.';return stat('Topology','Bidirectional','CCR direction observed','topology-bidirectional',explanation)}if(topology==='unidirectional')return stat('Topology','Unidirectional','CCR direction observed','topology-unidirectional');return stat('Topology','Unavailable','CCR direction observed')}
+function topologyStat(topology){if(topology==='bidirectional'){let explanation='CCR is active in both directions. FSDR supports only one primary-to-follower direction because switchover and reprotect would otherwise be ambiguous.';return stat('Topology','Bidirectional','CCR direction observed','topology-card topology-bidirectional',explanation)}if(topology==='unidirectional')return stat('Topology','Unidirectional','CCR direction observed','topology-card topology-unidirectional');return stat('Topology','Unavailable','CCR direction observed','topology-card')}
 function orderedClusterNames(mon){return Object.keys(mon.clusters||{}).sort((left,right)=>Number(right===mon.primary)-Number(left===mon.primary))}
 function clusterLabel(mon,key){let cluster=mon.clusters?.[key];return cluster?cluster.name+' ('+String(key).toUpperCase()+')':(key?String(key).toUpperCase():'Unavailable')}
 function fsdrTag(replicate){return replicate?'<span class="fsdr-tag protected" title="FSDR replication marker is configured." aria-label="FSDR replication marker is configured">FSDR</span>':'<span class="fsdr-tag missing" title="FSDR replication marker is missing. Replication through FSDR cannot be performed." aria-label="FSDR replication marker is missing. Replication through FSDR cannot be performed.">FSDR</span>'}
