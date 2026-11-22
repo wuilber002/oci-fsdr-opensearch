@@ -29,18 +29,18 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .subtitle{color:#a8b9d2;max-width:720px}
 .status-banner{border:1px solid #244e71;background:#102a45;border-radius:10px;padding:12px 15px;color:#bbdefb;margin-bottom:18px}
 .summary{display:grid;grid-template-columns:max-content max-content max-content minmax(0,1fr);gap:14px;margin-bottom:22px}
-.stat,.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
-.stat{padding:17px}
-.summary .stat{min-height:122px;box-sizing:border-box;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
+.summary-card,.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.summary-card{padding:17px}
+.summary .summary-card{min-height:122px;box-sizing:border-box;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
 .stat-label{font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:750;text-transform:uppercase}
 .stat-value{font-size:24px;font-weight:750;margin-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.summary .stat-value,.summary .state-card .state-value{align-self:center;margin:0}
+.summary .summary-card .stat-value,.summary .state-card .state-value{align-self:center;margin:0}
 .stat-note{margin-top:6px;color:var(--muted);font-size:12px}
-.summary .stat-note{margin:0;align-self:end}
-.stat.topology-unidirectional{background:#10291f;border-color:#256342}
-.stat.topology-unidirectional .stat-value{color:#fff;font-weight:750}
-.stat.topology-bidirectional{background:#351821;border-color:#7f1d2d}
-.stat.topology-bidirectional .stat-value{color:#fff;font-weight:750;cursor:help}
+.summary .summary-card .stat-note{margin:0;align-self:end}
+.summary-card.topology-unidirectional{background:#10291f;border-color:#256342}
+.summary-card.topology-unidirectional .stat-value{color:#fff;font-weight:750}
+.summary-card.topology-bidirectional{background:#351821;border-color:#7f1d2d}
+.summary-card.topology-bidirectional .stat-value{color:#fff;font-weight:750;cursor:help}
 .topology-card{width:max-content;min-width:0;white-space:nowrap}
 .primary-card,.state-card{width:max-content;min-width:0;white-space:nowrap}
 .primary-card .stat-value,.state-card .state-value,.topology-card .stat-value{color:#fff;font-size:20px;font-weight:800}
@@ -161,13 +161,13 @@ const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>'
 async function api(path){let r=await fetch(path);if(!r.ok)throw new Error(await r.text());return r}
 function badge(status,error){let value=error||status||'Unknown',kind=error?'error':(/^(SYNCING|PRIMARY|succeeded)$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/failed/i.test(value)?'error':'neutral'),longStatus=!error&&String(value).toUpperCase()==='REPLICATION NOT IN PROGRESS',label=longStatus?'REPLICATION NOT<br>IN PROGRESS':esc(value);return '<span class="badge '+kind+(longStatus?' long-status':'')+'">'+label+'</span>'}
 function statusIcon(status){let symbols={queued:'◷',running:'◌',succeeded:'✓',failed:'✕',interrupted:'!'},value=status||'unknown',kind=/^succeeded$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/^failed$/i.test(value)?'error':'neutral',state=String(value).toLowerCase().replace(/[^a-z0-9_-]/g,'-');return '<span class="status-icon '+kind+' '+state+'" title="'+esc(value)+'" aria-label="'+esc(value)+'">'+(symbols[value]||'?')+'</span>'}
-function stat(label,value,note,style='',tooltip=''){return '<div class="stat '+style+'"><div class="stat-label">'+esc(label)+'</div><div class="stat-value"'+(tooltip?' title="'+esc(tooltip)+'" aria-label="'+esc(tooltip)+'"':'')+'>'+esc(value)+'</div><div class="stat-note">'+esc(note)+'</div></div>'}
+function summaryCard({label,value,note,classes='',tooltip='',valueClass='stat-value',valueHtml=false,noteHtml=false}){let output=valueHtml?value:esc(value),detail=noteHtml?note:esc(note),title=tooltip?' title="'+esc(tooltip)+'" aria-label="'+esc(tooltip)+'"':'';return '<article class="summary-card '+classes+'"><div class="stat-label">'+esc(label)+'</div><div class="'+valueClass+'"'+title+'>'+output+'</div><div class="stat-note">'+detail+'</div></article>'}
 function displayTime(value){if(!value)return 'No status update';let date=new Date(typeof value==='number'?value*1000:value);return Number.isNaN(date.getTime())?'No status update':date.toLocaleString()}
 function stateLabel(phase){return String(phase).toLowerCase().split('_').map(word=>esc(word.charAt(0).toUpperCase()+word.slice(1))).join('<br>')}
-function stateStat(mon){let phase=mon.phase||'Unavailable',failed=Boolean((mon.errors||[]).length)||['failed','interrupted'].includes(latestJob?.status),tone='state-'+phase.toLowerCase().replace(/_/g,'-'),timestamp=mon.state_updated_at,reason='';if(failed){tone='state-error';timestamp=latestJob?.finished_at||latestJob?.started_at||latestJob?.submitted_at||timestamp;reason=latestJob?.reason||mon.errors?.[0]||'The latest FSDR operation did not complete successfully.'}let label=stateLabel(phase);return '<div class="stat state-card '+tone+'"><div class="stat-label">FSDR State</div><div class="state-value"'+(reason?' title="'+esc(reason)+'" aria-label="'+esc(reason)+'"':'')+'>'+label+'</div><div class="stat-note">'+esc(displayTime(timestamp))+'</div></div>'}
-function primaryStat(mon){let key=mon.primary,cluster=mon.clusters?.[key],identified=Boolean(cluster&&key),name=identified?cluster.name:'Unavailable',target=identified?'Current write target (<strong>'+esc(String(key).toUpperCase())+'</strong>)':'Current write target';return '<div class="stat primary-card '+(identified?'primary-identified':'primary-unavailable')+'"><div class="stat-label">Observed primary</div><div class="stat-value">'+esc(name)+'</div><div class="stat-note">'+target+'</div></div>'}
+function stateStat(mon){let phase=mon.phase||'Unavailable',failed=Boolean((mon.errors||[]).length)||['failed','interrupted'].includes(latestJob?.status),tone='state-'+phase.toLowerCase().replace(/_/g,'-'),timestamp=mon.state_updated_at,reason='';if(failed){tone='state-error';timestamp=latestJob?.finished_at||latestJob?.started_at||latestJob?.submitted_at||timestamp;reason=latestJob?.reason||mon.errors?.[0]||'The latest FSDR operation did not complete successfully.'}return summaryCard({label:'FSDR State',value:stateLabel(phase),note:displayTime(timestamp),classes:'state-card '+tone,tooltip:reason,valueClass:'state-value',valueHtml:true})}
+function primaryStat(mon){let key=mon.primary,cluster=mon.clusters?.[key],identified=Boolean(cluster&&key),name=identified?cluster.name:'Unavailable',target=identified?'Current write target (<strong>'+esc(String(key).toUpperCase())+'</strong>)':'Current write target';return summaryCard({label:'Observed primary',value:name,note:target,classes:'primary-card '+(identified?'primary-identified':'primary-unavailable'),noteHtml:true})}
 function topologyState(mon){return mon.topology||((mon.primary&&Object.keys(mon.clusters||{}).length===2)?'unidirectional':'unavailable')}
-function topologyStat(topology){if(topology==='bidirectional'){let explanation='CCR is active in both directions. FSDR supports only one primary-to-follower direction because switchover and reprotect would otherwise be ambiguous.';return stat('Topology','Bidirectional','CCR direction observed','topology-card topology-bidirectional',explanation)}if(topology==='unidirectional')return stat('Topology','Unidirectional','CCR direction observed','topology-card topology-unidirectional');return stat('Topology','Unavailable','CCR direction observed','topology-card')}
+function topologyStat(topology){if(topology==='bidirectional'){let explanation='CCR is active in both directions. FSDR supports only one primary-to-follower direction because switchover and reprotect would otherwise be ambiguous.';return summaryCard({label:'Topology',value:'Bidirectional',note:'CCR direction observed',classes:'topology-card topology-bidirectional',tooltip:explanation})}if(topology==='unidirectional')return summaryCard({label:'Topology',value:'Unidirectional',note:'CCR direction observed',classes:'topology-card topology-unidirectional'});return summaryCard({label:'Topology',value:'Unavailable',note:'CCR direction observed',classes:'topology-card'})}
 function orderedClusterNames(mon){return Object.keys(mon.clusters||{}).sort((left,right)=>Number(right===mon.primary)-Number(left===mon.primary))}
 function clusterLabel(mon,key){let cluster=mon.clusters?.[key];return cluster?cluster.name+' ('+String(key).toUpperCase()+')':(key?String(key).toUpperCase():'Unavailable')}
 function fsdrTag(replicate){return replicate?'<span class="fsdr-tag protected" title="FSDR replication marker is configured." aria-label="FSDR replication marker is configured">FSDR</span>':'<span class="fsdr-tag missing" title="FSDR replication marker is missing. Replication through FSDR cannot be performed." aria-label="FSDR replication marker is missing. Replication through FSDR cannot be performed.">FSDR</span>'}
@@ -188,7 +188,7 @@ document.querySelectorAll('.top-nav a[href^="#"]').forEach(link=>link.addEventLi
 function renderMonitor(mon,includeOverview,includeComparison){
     let topology=topologyState(mon);
     let docs=mon.clusters?.[mon.primary]?.documents||0;
-    if(includeOverview)document.querySelector('#overview').innerHTML=primaryStat(mon)+stateStat(mon)+topologyStat(topology)+stat('Protected documents',docs,'Unique documents on primary');
+    if(includeOverview)document.querySelector('#overview').innerHTML=primaryStat(mon)+stateStat(mon)+topologyStat(topology)+summaryCard({label:'Protected documents',value:docs,note:'Unique documents on primary'});
     if(includeComparison){document.querySelector('#comparison').innerHTML=orderedClusterNames(mon).map(k=>cluster(mon.clusters[k],k,mon.phase)).join('');document.querySelector('#topology').textContent=topology==='unavailable'?'Topology unavailable':topology.charAt(0).toUpperCase()+topology.slice(1)+' topology'}
 }
 async function refreshMonitor(includeOverview,includeComparison){

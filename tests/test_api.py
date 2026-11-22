@@ -71,6 +71,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("primary-identified", api.DASHBOARD_HTML)
         self.assertIn("primary-unavailable", api.DASHBOARD_HTML)
         self.assertIn("function stateLabel", api.DASHBOARD_HTML)
+        self.assertIn("function summaryCard", api.DASHBOARD_HTML)
+        self.assertIn("summary-card", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
 
