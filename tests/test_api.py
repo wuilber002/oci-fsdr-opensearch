@@ -172,6 +172,32 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(inventory["requirements"][0]["met"])
         self.assertEqual(inventory["requirements"][0]["detail"], "FSDR was READY.")
 
+    def test_running_step_preserves_its_admission_gates_after_phase_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            running = {
+                "id": "reprotect-running", "request": {"command": "reprotect"},
+                "status": "running", "submitted_at": "2026-01-01T00:00:00Z",
+                "workflow_evidence": {"requirements": [{
+                    "key": "service-restored", "met": True,
+                    "detail": "FSDR state was SERVICE_RESTORED.",
+                    "explanation": "The step was admitted before phase transition.", "level": "waiting",
+                }]},
+            }
+            snapshot = workflow_snapshot(state_dir, {"phase": "REPROTECTING"}, jobs=[running])
+            reprotect = step_for(snapshot, "reprotect")
+        self.assertEqual(reprotect["status"], "running")
+        self.assertTrue(reprotect["requirements"][0]["met"])
+        self.assertEqual(reprotect["requirements"][0]["detail"], "FSDR state was SERVICE_RESTORED.")
+
+    def test_legacy_running_step_is_not_repainted_after_phase_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            running = {"id": "legacy-reprotect", "request": {"command": "reprotect"},
+                       "status": "running", "submitted_at": "2026-01-01T00:00:00Z"}
+            snapshot = workflow_snapshot(Path(directory), {"phase": "REPROTECTING"}, jobs=[running])
+            reprotect = step_for(snapshot, "reprotect")
+        self.assertTrue(all(item["met"] for item in reprotect["requirements"]))
+
     def test_api_workflow_gate_rejects_out_of_order_switchover(self):
         class Manager:
             def recent(self):

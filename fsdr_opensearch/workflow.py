@@ -280,7 +280,20 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
         last_attempt_at = (attempt.get("finished_at") or attempt.get("started_at")
                            or attempt.get("submitted_at"))
         displayed_requirements = requirements
-        if latest and latest.get("status") == "succeeded":
+        active_requirements = (active or {}).get("workflow_evidence", {}).get("requirements")
+        if isinstance(active_requirements, list):
+            # A running step may intentionally change the FSDR phase (for
+            # example SERVICE_RESTORED to REPROTECTING). Keep showing the
+            # gates that admitted this in-flight execution.
+            displayed_requirements = list(active_requirements)
+        elif active:
+            # Compatibility for a job that started before evidence snapshots
+            # were introduced. An active job already passed API admission.
+            displayed_requirements = [{**item, "met": True,
+                                     "detail": "Satisfied when this active execution began.",
+                                     "level": "waiting"}
+                                    for item in requirements]
+        elif latest and latest.get("status") == "succeeded":
             if isinstance(frozen_requirements, list):
                 displayed_requirements = list(frozen_requirements)
             else:
