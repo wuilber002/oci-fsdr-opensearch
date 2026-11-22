@@ -150,7 +150,7 @@ tr:last-child td{border-bottom:0}
 </header>
 <main class="content">
   <div class="page-title"><div><h1>OpenSearch overview</h1><div class="eyebrow">Full Stack Disaster Recovery · Cross-Cluster Replication</div><div class="subtitle">Follow protected indices, current replication direction and FSDR jobs while the controller operates.</div></div></div>
-  <div id="notice" class="status-banner" hidden></div>
+  <div id="notice" class="status-banner">Connecting to the controller…</div>
   <section id="overview" class="summary"></section>
   <section id="recovery-paths" class="card recovery-section"><div class="section-head"><h2>Recovery paths</h2><span class="small">Switchover and failover gates</span></div><div id="recovery-flow" class="recovery-flow"></div></section>
   <section class="card workflow-section"><div class="section-head"><h2>Planned switchover workflow</h2><span class="small">Execution gates</span></div><div id="workflow" class="workflow-steps"></div></section>
@@ -164,9 +164,8 @@ tr:last-child td{border-bottom:0}
   <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span></footer>
 </main>
 <script>
-let selected='',historyPage=0,historyRows=[],latestJob=null,outputStream=null,jobsStream=null,stateStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=11;
+let selected='',historyPage=0,historyRows=[],latestJob=null,outputStream=null,dashboardStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=11;
 const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function api(path){let r=await fetch(path);if(!r.ok)throw new Error(await r.text());return r}
 function badge(status,error){let value=error||status||'Unknown',kind=error?'error':(/^(SYNCING|PRIMARY|succeeded)$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/failed/i.test(value)?'error':'neutral'),longStatus=!error&&String(value).toUpperCase()==='REPLICATION NOT IN PROGRESS',label=longStatus?'REPLICATION NOT<br>IN PROGRESS':esc(value);return '<span class="badge '+kind+(longStatus?' long-status':'')+'">'+label+'</span>'}
 function statusIcon(status){let symbols={queued:'◷',running:'◌',succeeded:'✓',failed:'✕',interrupted:'!'},value=status||'unknown',kind=/^succeeded$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/^failed$/i.test(value)?'error':'neutral',state=String(value).toLowerCase().replace(/[^a-z0-9_-]/g,'-');return '<span class="status-icon '+kind+' '+state+'" title="'+esc(value)+'" aria-label="'+esc(value)+'">'+(symbols[value]||'?')+'</span>'}
 function summaryCard({label,value,note,classes='',tooltip='',valueClass='stat-value',valueHtml=false,noteHtml=false}){let output=valueHtml?value:esc(value),detail=noteHtml?note:esc(note),title=tooltip?' title="'+esc(tooltip)+'" aria-label="'+esc(tooltip)+'"':'';return '<article class="summary-card '+classes+'"><div class="stat-label">'+esc(label)+'</div><div class="'+valueClass+'"'+title+'>'+output+'</div><div class="stat-note">'+detail+'</div></article>'}
@@ -203,9 +202,8 @@ function renderHistory(){let pages=Math.max(1,Math.ceil(historyRows.length/HISTO
 function changeHistoryPage(delta){historyPage=Math.max(0,historyPage+delta);renderHistory()}
 function output(id){if(!id||streamingJob===id||loadedOutput===id)return;if(outputStream)outputStream.close();streamingJob=id;loadedOutput='';let console=document.querySelector('#active-console');console.textContent='';let stream=new EventSource('/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events');outputStream=stream;stream.addEventListener('output',event=>{if(selected!==id)return;console.textContent+=JSON.parse(event.data);console.scrollTop=console.scrollHeight});stream.addEventListener('end',()=>{if(outputStream===stream){stream.close();outputStream=null;streamingJob='';loadedOutput=id}});stream.addEventListener('error',()=>{if(stream.readyState===EventSource.CLOSED&&outputStream===stream){outputStream=null;streamingJob='';console.textContent||='Unable to stream this job log.'}})}
 function applyJobs(jobs){latestJob=jobs.jobs[0]||null;let active=jobs.jobs.find(j=>j.status==='running')||jobs.jobs.find(j=>j.status==='queued')||jobs.jobs[0];if(!selected&&active)selected=active.id;if(active&&['running','queued'].includes(active.status))selected=active.id;activeInfo(active);historyRows=jobs.jobs;document.querySelector('#job-count').textContent=historyRows.length+' recent job(s)';renderHistory();if(selected)output(selected)}
-async function refreshJobs(){let response=await api('/dashboard/v1/jobs');applyJobs(await response.json())}
-function connectJobsStream(){if(jobsStream)return;jobsStream=new EventSource('/dashboard/v1/jobs/events');jobsStream.addEventListener('jobs',()=>{refreshJobs().then(refreshState).catch(()=>{})})}
-function connectStateStream(){if(stateStream)return;stateStream=new EventSource('/dashboard/v1/state/events');stateStream.addEventListener('state',()=>{refreshDashboard()})}
+function applyDashboard(snapshot){if(!snapshot||!snapshot.monitor||!snapshot.jobs)return;latestJob=null;applyJobs(snapshot.jobs);renderMonitor(snapshot.monitor,true,true);document.querySelector('#notice').hidden=true}
+function connectDashboardStream(){if(dashboardStream)return;dashboardStream=new EventSource('/dashboard/v1/events');dashboardStream.addEventListener('snapshot',event=>{try{applyDashboard(JSON.parse(event.data))}catch(error){let notice=document.querySelector('#notice');notice.textContent='Dashboard stream payload is invalid.';notice.hidden=false}});dashboardStream.addEventListener('error',()=>{let notice=document.querySelector('#notice');notice.textContent='Dashboard connection lost; reconnecting…';notice.hidden=false})}
 function updateClock(){document.querySelector('#clock').textContent=new Date().toLocaleString()}
 window.addEventListener('resize',()=>{let target=document.querySelector('#recovery-flow');if(target)drawRecoveryConnectors(target)})
 document.querySelectorAll('.top-nav a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{let target=document.querySelector(link.getAttribute('href'));if(!target)return;event.preventDefault();target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'',link.getAttribute('href'));target.classList.remove('nav-target-flash');void target.offsetWidth;target.classList.add('nav-target-flash')}));
@@ -214,19 +212,7 @@ function renderMonitor(mon,includeOverview,includeComparison){
     if(includeOverview){document.querySelector('#overview').innerHTML=primaryStat(mon)+stateStat(mon)+topologyStat(topology);renderRecoveryPaths(mon.workflow);renderWorkflow(mon.workflow)}
     if(includeComparison){document.querySelector('#comparison').innerHTML=orderedClusterNames(mon).map(k=>cluster(mon.clusters[k],k,mon.phase)).join('');document.querySelector('#topology').textContent=topology==='unavailable'?'Topology unavailable':topology.charAt(0).toUpperCase()+topology.slice(1)+' topology'}
 }
-async function refreshMonitor(includeOverview,includeComparison){
-  try{
-    let mon=await (await api('/dashboard/v1/monitor')).json();
-    document.querySelector('#notice').hidden=true;
-    renderMonitor(mon,includeOverview,includeComparison);
-  }catch(e){
-    let notice=document.querySelector('#notice');notice.textContent='Dashboard refresh failed: '+e.message;notice.hidden=false;
-  }
-}
-function refreshDashboard(){return refreshMonitor(true,true)}
-function refreshState(){return refreshMonitor(true,false)}
-function refreshComparison(){return refreshMonitor(false,true)}
 updateClock();setInterval(updateClock,1000);
-refreshDashboard();refreshJobs().then(refreshState);connectJobsStream();connectStateStream();setInterval(refreshComparison,5000);
+connectDashboardStream();
 </script>
 </body></html>'''

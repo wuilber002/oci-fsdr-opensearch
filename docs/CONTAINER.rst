@@ -70,9 +70,13 @@ For a workstation, create a tunnel and then open the same URL locally::
 The dashboard is intentionally read-only and does not require the API Bearer
 token. It is safe to use for a local operator display because Compose binds the
 service only to ``127.0.0.1``; remote viewing must use an SSH tunnel. Job,
-state and workflow-gate changes arrive through Server-Sent Events; the paired
-cluster comparison refreshes its document counts and CCR status every five
-seconds without writing OpenSearch or FSDR state.
+state, workflow-gate changes, job history and paired-cluster comparison arrive
+through one Server-Sent Events stream. The stream sends a full snapshot on
+connection and whenever durable FSDR state or job lifecycle changes; the backend
+also refreshes read-only document counts and CCR status on a bounded interval.
+The browser does not poll dashboard endpoints or make follow-up data requests.
+Job submission remains an authenticated HTTP ``POST`` because SSE is
+server-to-browser only.
 
 The dashboard keeps the console data structure—banner, paired cluster panels,
 per-index comparison, execution console and time footer—using a web-oriented

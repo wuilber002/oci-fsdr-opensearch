@@ -52,7 +52,8 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(data["errors"])
 
     def test_dashboard_is_self_contained_and_does_not_embed_token(self):
-        self.assertIn("/dashboard/v1/monitor", api.DASHBOARD_HTML)
+        self.assertIn("/dashboard/v1/events", api.DASHBOARD_HTML)
+        self.assertNotIn("/dashboard/v1/monitor", api.DASHBOARD_HTML)
         self.assertIn("Controller job", api.DASHBOARD_HTML)
         self.assertIn("Replicated indices comparison", api.DASHBOARD_HTML)
         self.assertIn("top-nav", api.DASHBOARD_HTML)
@@ -64,10 +65,12 @@ class ApiTests(unittest.TestCase):
         self.assertIn("history-pagination", api.DASHBOARD_HTML)
         self.assertIn("EventSource", api.DASHBOARD_HTML)
         self.assertIn("/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events", api.DASHBOARD_HTML)
-        self.assertIn("/dashboard/v1/jobs/events", api.DASHBOARD_HTML)
-        self.assertIn("/dashboard/v1/state/events", api.DASHBOARD_HTML)
-        self.assertIn("setInterval(refreshComparison,5000)", api.DASHBOARD_HTML)
-        self.assertNotIn("setInterval(refresh,5000)", api.DASHBOARD_HTML)
+        self.assertIn("connectDashboardStream", api.DASHBOARD_HTML)
+        self.assertIn("event=>{try{applyDashboard(JSON.parse(event.data))}", api.DASHBOARD_HTML)
+        self.assertNotIn("/dashboard/v1/jobs/events", api.DASHBOARD_HTML)
+        self.assertNotIn("/dashboard/v1/state/events", api.DASHBOARD_HTML)
+        self.assertNotIn("refreshComparison", api.DASHBOARD_HTML)
+        self.assertNotIn("fetch(", api.DASHBOARD_HTML)
         self.assertIn("topology-unidirectional", api.DASHBOARD_HTML)
         self.assertIn("topology-bidirectional", api.DASHBOARD_HTML)
         self.assertIn("primary-identified", api.DASHBOARD_HTML)
@@ -220,6 +223,16 @@ class ApiTests(unittest.TestCase):
         self.assertIn("event: output", events[0])
         self.assertIn('"completed\\n"', events[0])
         self.assertIn("event: end", events[1])
+
+    def test_dashboard_snapshot_payload_contains_monitor_and_job_history(self):
+        class Manager:
+            def recent(self):
+                return [{"id": "job", "status": "running"}]
+
+        with patch.object(api, "monitor_snapshot", return_value={"phase": "READY"}):
+            payload = api.dashboard_snapshot_payload(Manager())
+        self.assertEqual(payload["monitor"]["phase"], "READY")
+        self.assertEqual(payload["jobs"]["jobs"][0]["id"], "job")
 
     def test_dashboard_jobs_stream_announces_current_revision(self):
         class Manager:

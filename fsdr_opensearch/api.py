@@ -470,6 +470,43 @@ async def dashboard_output_stream(manager, job_id, offset):
         await asyncio.sleep(0.4)
 
 
+def dashboard_snapshot_payload(manager=None):
+    """Return the complete read-only dashboard projection for one SSE event."""
+    manager = manager or api_manager()
+    return {"monitor": monitor_snapshot(), "jobs": {"jobs": manager.recent()}}
+
+
+async def dashboard_events_stream(manager, refresh_seconds=5.0):
+    """Push complete dashboard snapshots without browser polling.
+
+    FSDR state and job lifecycle changes are detected immediately from their
+    durable local records.  A bounded periodic observation refreshes remote
+    OpenSearch counters and CCR status; the shared monitor cache prevents one
+    observer request per browser connection.
+    """
+    revision = 0
+    signature = object()
+    next_observation = 0.0
+    last_keepalive = time.monotonic()
+    while True:
+        configured = _read_json(CONFIG, {})
+        state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+        current = (str(CONFIG), _file_version(CONFIG), _file_version(state_dir / "state.json"),
+                   _file_version(state_dir / "workflow.json"), manager.job_revision())
+        now = time.monotonic()
+        if current != signature or now >= next_observation:
+            payload = await asyncio.to_thread(dashboard_snapshot_payload, manager)
+            signature = current
+            revision += 1
+            next_observation = now + max(1.0, refresh_seconds)
+            yield "id: {}\nevent: snapshot\ndata: {}\n\n".format(revision, json.dumps(payload))
+            last_keepalive = time.monotonic()
+        elif time.monotonic() - last_keepalive >= 15:
+            yield ": keepalive\n\n"
+            last_keepalive = time.monotonic()
+        await asyncio.sleep(0.25)
+
+
 async def dashboard_jobs_stream(manager, revision):
     """Publish job lifecycle updates to dashboard clients through SSE."""
     sent_initial = False
@@ -496,6 +533,14 @@ async def dashboard_state_stream(state_file):
             yield ": keepalive\n\n"
             last_keepalive = time.monotonic()
         await asyncio.sleep(0.4)
+
+
+@app.get("/dashboard/v1/events")
+async def dashboard_events():
+    """Unified public dashboard feed: monitor, workflow and job history."""
+    return StreamingResponse(dashboard_events_stream(api_manager()),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/dashboard/v1/jobs/{job_id}/events")
