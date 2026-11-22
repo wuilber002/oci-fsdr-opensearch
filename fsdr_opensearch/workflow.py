@@ -143,13 +143,20 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     current = _current_jobs(active_jobs)
     controller_busy = bool(active_jobs)
     phase = state.get("phase") or "READY"
-    completed_cycle = (_latest(events, "reprotect") if phase == "PROTECTION_RESTORED" else None)
+    # A successful reprotect closes a recovery cycle permanently.  Keep that
+    # boundary after the next cycle enters SERVICE_RESTORED; otherwise an old
+    # reprotect event is incorrectly projected as complete in the new cycle.
+    completed_cycle = _latest(events, "reprotect")
     completed_cycle = (completed_cycle if completed_cycle and completed_cycle.get("status") == "succeeded"
                        else None)
     completed_at = _epoch((completed_cycle or {}).get("finished_at"))
     cycle_reset_pending_until = (completed_at + RECOVERY_CYCLE_RESET_DELAY_SECONDS
                                  if completed_at is not None else None)
-    reset_pending = bool(cycle_reset_pending_until and now < cycle_reset_pending_until)
+    # Preserve the finished visual path only during the configured delay while
+    # the controller is still in its restored-protection state. A later
+    # transition is necessarily a new cycle and must use the boundary now.
+    reset_pending = bool(phase == "PROTECTION_RESTORED" and cycle_reset_pending_until
+                         and now < cycle_reset_pending_until)
     cycle_boundary = completed_cycle if completed_cycle and not reset_pending else None
     cycle_events = ([event for event in events if _event_order(event) > _event_order(cycle_boundary)]
                     if cycle_boundary else events)

@@ -458,11 +458,14 @@ def jobs():
     return {"jobs": api_manager().recent()}
 
 
-def current_workflow(manager=None):
+def current_workflow(manager=None, jobs=None):
     configured = _read_json(CONFIG, {})
     state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
     manager = manager or api_manager()
-    return workflow_snapshot(state_dir, _read_json(state_dir / "state.json", {}), manager.recent())
+    # Reuse the job collection carried by an SSE payload. History and Recovery
+    # paths must be derived from the same controller revision.
+    return workflow_snapshot(state_dir, _read_json(state_dir / "state.json", {}),
+                             manager.recent() if jobs is None else jobs)
 
 
 @app.get("/v1/workflow", dependencies=[Depends(token_auth)])
@@ -551,9 +554,15 @@ async def dashboard_output_stream(manager, job_id, offset):
 
 
 def dashboard_snapshot_payload(manager=None):
-    """Return the complete read-only dashboard projection for one SSE event."""
+    """Return one internally consistent dashboard projection for an SSE event."""
     manager = manager or api_manager()
-    return {"monitor": monitor_snapshot(), "jobs": {"jobs": manager.recent()}}
+    jobs = manager.recent()
+    # Remote monitor data is cached briefly, but workflow/job lifecycle data is
+    # local and changes immediately. Refresh only that projection so a delayed
+    # monitor snapshot cannot overwrite a newer jobs-stream workflow update.
+    monitor = dict(monitor_snapshot())
+    monitor["workflow"] = current_workflow(manager, jobs)
+    return {"monitor": monitor, "jobs": {"jobs": jobs}}
 
 
 async def dashboard_events_stream(manager, refresh_seconds=5.0):
@@ -600,12 +609,13 @@ async def dashboard_jobs_stream(manager, revision):
             # Do not call monitor_snapshot here. This feed must be able to
             # render a newly submitted or rejected job even if either remote
             # OpenSearch endpoint is slow or temporarily unavailable.
-            workflow = current_workflow(manager)
+            jobs = manager.recent()
+            workflow = current_workflow(manager, jobs)
             pending_reset = workflow.get("cycle_reset_pending_until")
             workflow_refresh_at = (float(pending_reset) if isinstance(pending_reset, (int, float))
                                    and pending_reset > now else None)
             yield "id: {}\nevent: jobs\ndata: {}\n\n".format(
-                revision, json.dumps({"revision": revision, "jobs": manager.recent(),
+                revision, json.dumps({"revision": revision, "jobs": jobs,
                                       "workflow": workflow}))
         # ``wait_for_job_change`` returns the revision that woke the waiter.
         # Do not assign it here: the next iteration must compare that new
