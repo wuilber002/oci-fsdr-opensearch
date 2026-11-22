@@ -89,6 +89,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("recovery-connectors", api.DASHBOARD_HTML)
         self.assertIn("recovery-connector-blocked", api.DASHBOARD_HTML)
         self.assertIn("recovery-connector-open", api.DASHBOARD_HTML)
+        self.assertIn("ready-pulse", api.DASHBOARD_HTML)
+        self.assertIn("path-name", api.DASHBOARD_HTML)
         self.assertIn("state-service-restored{background:#102a45", api.DASHBOARD_HTML)
         self.assertIn("ACTIVE PATH", api.DASHBOARD_HTML)
         self.assertIn("path-unavailable", api.DASHBOARD_HTML)
