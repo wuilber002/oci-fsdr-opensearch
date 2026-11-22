@@ -28,7 +28,12 @@ body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,ui-sans-ser
 h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .subtitle{color:#a8b9d2;max-width:720px}
 .status-banner{border:1px solid #244e71;background:#102a45;border-radius:10px;padding:12px 15px;color:#bbdefb;margin-bottom:18px}
-.summary{display:grid;grid-template-columns:max-content max-content max-content minmax(0,1fr);gap:14px;margin-bottom:22px}
+.summary{display:grid;grid-template-columns:max-content max-content max-content;gap:14px;margin-bottom:22px}
+.workflow-section{margin-bottom:22px}
+.workflow-steps{display:grid;grid-template-columns:repeat(5,minmax(155px,1fr));gap:12px;padding:14px 16px 16px}
+.workflow-card{min-height:122px;box-sizing:border-box;padding:14px 15px;display:grid;grid-template-rows:18px minmax(0,1fr) 22px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
+.workflow-leds{display:flex;align-items:center;gap:7px;min-height:18px}.step-led{display:inline-block;width:9px;height:9px;border-radius:50%;background:#3a4658;box-shadow:0 0 0 2px #202b3e;cursor:help}.step-led.met{background:var(--green);box-shadow:0 0 8px rgba(64,220,139,.6)}.step-led.blocked{background:var(--red);box-shadow:0 0 8px rgba(255,99,113,.45)}
+.workflow-name{align-self:center;color:#fff;font-size:17px;line-height:1.08;font-weight:800;letter-spacing:-.015em}.workflow-status{align-self:end;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;cursor:help}.workflow-ready .workflow-status,.workflow-succeeded .workflow-status{color:var(--green)}.workflow-waiting .workflow-status,.workflow-queued .workflow-status,.workflow-running .workflow-status{color:var(--orange)}.workflow-blocked .workflow-status,.workflow-failed .workflow-status,.workflow-interrupted .workflow-status{color:var(--red)}.workflow-running .workflow-status:before{content:'';display:inline-block;width:8px;height:8px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-1px;animation:spin .8s linear infinite}
 .summary-card,.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
 .summary-card{padding:17px}
 .summary .summary-card{min-height:122px;box-sizing:border-box;display:grid;grid-template-rows:auto minmax(0,1fr) auto}
@@ -126,8 +131,8 @@ tr:last-child td{border-bottom:0}
 .nav-target-flash{animation:nav-target-flash 1.4s ease-out}
 @keyframes nav-target-flash{0%{box-shadow:0 0 0 2px #60a5fa,0 0 24px rgba(96,165,250,.45)}100%{box-shadow:none}}
 #clusters{display:none}
-@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.job-grid{grid-template-columns:1fr;height:auto}.job-panel{min-height:520px}.job-panel+.job-panel{border-left:0;border-top:1px solid var(--line)}.top-context{display:none}}
-@media(max-width:820px){.topbar{padding:9px 18px;flex-wrap:wrap}.top-nav{order:3;flex-basis:100%;overflow:auto}.content{padding:20px}.cards,.summary{grid-template-columns:1fr}.page-title{display:block}.refresh{margin-top:14px}h1{font-size:25px}th,td{padding:10px 12px}.job-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:1100px){.summary{grid-template-columns:repeat(2,1fr)}.workflow-steps{grid-template-columns:repeat(3,minmax(155px,1fr))}.job-grid{grid-template-columns:1fr;height:auto}.job-panel{min-height:520px}.job-panel+.job-panel{border-left:0;border-top:1px solid var(--line)}.top-context{display:none}}
+@media(max-width:820px){.topbar{padding:9px 18px;flex-wrap:wrap}.top-nav{order:3;flex-basis:100%;overflow:auto}.content{padding:20px}.cards,.summary,.workflow-steps{grid-template-columns:1fr}.page-title{display:block}.refresh{margin-top:14px}h1{font-size:25px}th,td{padding:10px 12px}.job-grid{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
@@ -146,6 +151,7 @@ tr:last-child td{border-bottom:0}
   <div class="page-title"><div><h1>OpenSearch overview</h1><div class="eyebrow">Full Stack Disaster Recovery · Cross-Cluster Replication</div><div class="subtitle">Follow protected indices, current replication direction and FSDR jobs while the controller operates.</div></div></div>
   <div id="notice" class="status-banner" hidden></div>
   <section id="overview" class="summary"></section>
+  <section class="card workflow-section"><div class="section-head"><h2>FSDR workflow</h2><span class="small">Execution gates</span></div><div id="workflow" class="workflow-steps"></div></section>
   <section id="comparison-section" class="card" style="margin-bottom:22px"><div class="section-head"><h2>Replicated indices comparison</h2><span id="topology" class="small">Waiting for topology</span></div><div id="comparison" class="cards" style="padding:16px;margin:0"></div></section>
   <section class="card controller-job"><div class="section-head"><h2>Controller job</h2></div>
     <div class="job-grid">
@@ -166,6 +172,10 @@ function displayTime(value){if(!value)return 'No status update';let date=new Dat
 function stateLabel(phase){return String(phase).toLowerCase().split('_').map(word=>esc(word.charAt(0).toUpperCase()+word.slice(1))).join('<br>')}
 function stateStat(mon){let phase=mon.phase||'Unavailable',failed=Boolean((mon.errors||[]).length)||['failed','interrupted'].includes(latestJob?.status),tone='state-'+phase.toLowerCase().replace(/_/g,'-'),timestamp=mon.state_updated_at,reason='';if(failed){tone='state-error';timestamp=latestJob?.finished_at||latestJob?.started_at||latestJob?.submitted_at||timestamp;reason=latestJob?.reason||mon.errors?.[0]||'The latest FSDR operation did not complete successfully.'}return summaryCard({label:'FSDR State',value:stateLabel(phase),note:displayTime(timestamp),classes:'state-card '+tone,tooltip:reason,valueClass:'state-value',valueHtml:true})}
 function primaryStat(mon){let key=mon.primary,cluster=mon.clusters?.[key],identified=Boolean(cluster&&key),name=identified?cluster.name:'Unavailable',target=identified?'Current write target (<strong>'+esc(String(key).toUpperCase())+'</strong>)':'Current write target';return summaryCard({label:'Observed primary',value:name,note:target,classes:'primary-card '+(identified?'primary-identified':'primary-unavailable'),noteHtml:true})}
+function workflowLed(requirement){let state=requirement.met?'met':(requirement.level==='blocked'?'blocked':'waiting');return '<span class="step-led '+state+'" title="'+esc(requirement.detail)+'" aria-label="'+esc(requirement.detail)+'"></span>'}
+function workflowStatusLabel(status){return ({ready:'Ready',waiting:'Waiting for prerequisites',blocked:'Blocked',queued:'Queued',running:'Running',succeeded:'Succeeded',failed:'Failed',interrupted:'Interrupted'})[status]||'Unavailable'}
+function workflowCard(step){return '<article class="workflow-card workflow-'+esc(step.status)+'"><div class="workflow-leds">'+(step.requirements||[]).map(workflowLed).join('')+'</div><div class="workflow-name">'+esc(step.label)+'</div><div class="workflow-status" title="'+esc(step.status_detail)+'" aria-label="'+esc(step.status_detail)+'">'+esc(workflowStatusLabel(step.status))+'</div></article>'}
+function renderWorkflow(workflow){let target=document.querySelector('#workflow');if(!target)return;target.innerHTML=(workflow?.steps||[]).map(workflowCard).join('')||'<div class="empty">Workflow state is unavailable.</div>'}
 function topologyState(mon){return mon.topology||((mon.primary&&Object.keys(mon.clusters||{}).length===2)?'unidirectional':'unavailable')}
 function topologyStat(topology){if(topology==='bidirectional'){let explanation='CCR is active in both directions. FSDR supports only one primary-to-follower direction because switchover and reprotect would otherwise be ambiguous.';return summaryCard({label:'Topology',value:'Bidirectional',note:'CCR direction observed',classes:'topology-card topology-bidirectional',tooltip:explanation})}if(topology==='unidirectional')return summaryCard({label:'Topology',value:'Unidirectional',note:'CCR direction observed',classes:'topology-card topology-unidirectional'});return summaryCard({label:'Topology',value:'Unavailable',note:'CCR direction observed',classes:'topology-card'})}
 function orderedClusterNames(mon){return Object.keys(mon.clusters||{}).sort((left,right)=>Number(right===mon.primary)-Number(left===mon.primary))}
@@ -187,8 +197,7 @@ function updateClock(){document.querySelector('#clock').textContent=new Date().t
 document.querySelectorAll('.top-nav a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{let target=document.querySelector(link.getAttribute('href'));if(!target)return;event.preventDefault();target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'',link.getAttribute('href'));target.classList.remove('nav-target-flash');void target.offsetWidth;target.classList.add('nav-target-flash')}));
 function renderMonitor(mon,includeOverview,includeComparison){
     let topology=topologyState(mon);
-    let docs=mon.clusters?.[mon.primary]?.documents||0;
-    if(includeOverview)document.querySelector('#overview').innerHTML=primaryStat(mon)+stateStat(mon)+topologyStat(topology)+summaryCard({label:'Protected documents',value:docs,note:'Unique documents on primary'});
+    if(includeOverview){document.querySelector('#overview').innerHTML=primaryStat(mon)+stateStat(mon)+topologyStat(topology);renderWorkflow(mon.workflow)}
     if(includeComparison){document.querySelector('#comparison').innerHTML=orderedClusterNames(mon).map(k=>cluster(mon.clusters[k],k,mon.phase)).join('');document.querySelector('#topology').textContent=topology==='unavailable'?'Topology unavailable':topology.charAt(0).toUpperCase()+topology.slice(1)+' topology'}
 }
 async function refreshMonitor(includeOverview,includeComparison){

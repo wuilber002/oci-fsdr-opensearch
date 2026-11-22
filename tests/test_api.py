@@ -7,12 +7,14 @@ import sys
 import tempfile
 import unittest
 import json
+import time
 from unittest.mock import patch
 
 from pydantic import ValidationError
 
 from fsdr_opensearch import api
 from fsdr_opensearch.core import Error
+from fsdr_opensearch.workflow import record_event, step_for, workflow_snapshot
 
 
 class ApiTests(unittest.TestCase):
@@ -73,8 +75,74 @@ class ApiTests(unittest.TestCase):
         self.assertIn("function stateLabel", api.DASHBOARD_HTML)
         self.assertIn("function summaryCard", api.DASHBOARD_HTML)
         self.assertIn("summary-card", api.DASHBOARD_HTML)
+        self.assertIn("FSDR workflow", api.DASHBOARD_HTML)
+        self.assertIn("workflowCard", api.DASHBOARD_HTML)
+        self.assertNotIn("Protected documents", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
+
+    def test_workflow_gates_enforce_the_audited_switchover_sequence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            now = time.time()
+            state = {"phase": "READY"}
+            initial = workflow_snapshot(state_dir, state, now=now)
+            self.assertTrue(step_for(initial, "inventory")["eligible"])
+            self.assertFalse(step_for(initial, "validate-switchover")["eligible"])
+            state["inventory_at"] = now
+
+            def event(command, phase, status="succeeded"):
+                job = {"id": command, "request": {"command": command}, "status": status,
+                       "submitted_at": "2026-01-01T00:00:00Z", "started_at": "2026-01-01T00:00:01Z",
+                       "finished_at": "2026-01-01T00:00:02Z", "exit_code": 0}
+                record_event(state_dir, job, {**state, "phase": phase})
+
+            event("inventory", "READY")
+            event("validate-switchover", "READY")
+            prepared = workflow_snapshot(state_dir, state, now=now)
+            self.assertTrue(step_for(prepared, "switchover")["eligible"])
+
+            state["phase"] = "SERVICE_RESTORED"
+            event("switchover", "SERVICE_RESTORED")
+            switched = workflow_snapshot(state_dir, state, now=now)
+            self.assertTrue(step_for(switched, "validate-post-switchover")["eligible"])
+            self.assertFalse(step_for(switched, "reprotect")["eligible"])
+
+            event("validate-post-switchover", "SERVICE_RESTORED")
+            validated = workflow_snapshot(state_dir, state, now=now)
+            self.assertTrue(step_for(validated, "reprotect")["eligible"])
+
+    def test_api_workflow_gate_rejects_out_of_order_switchover(self):
+        class Manager:
+            def recent(self):
+                return []
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state = root / "state"
+                state.mkdir()
+                (state / "state.json").write_text(json.dumps({"phase": "READY"}), encoding="utf-8")
+                config = root / "config.json"
+                config.write_text(json.dumps({"state_dir": str(state)}), encoding="utf-8")
+                api.CONFIG = config
+                with self.assertRaises(api.HTTPException) as rejected:
+                    api.workflow_gate(api.OperationRequest(command="switchover"), Manager())
+                self.assertEqual(rejected.exception.status_code, 409)
+                api.workflow_gate(api.OperationRequest(command="inventory"), Manager())
+        finally:
+            api.CONFIG = original
+
+    def test_workflow_expired_inventory_blocks_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = workflow_snapshot(Path(directory), {
+                "phase": "READY", "inventory_at": time.time() - 3601,
+            })
+        step = step_for(snapshot, "validate-switchover")
+        self.assertEqual(step["status"], "waiting")
+        self.assertFalse(step["eligible"])
+        self.assertIn("expired", step["requirements"][1]["detail"])
 
     def test_dashboard_job_log_stream_sends_output_then_end(self):
         class Manager:

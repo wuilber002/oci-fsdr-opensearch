@@ -27,14 +27,36 @@ Use ``POST /v1/jobs`` with a Bearer token. Example helper variables::
         -d "$1" "$API/v1/jobs"
     }
 
+Audited workflow gates
+----------------------
+
+The API persists a local workflow ledger alongside FSDR state. It refuses an
+out-of-order submission with HTTP ``409`` and returns the unmet requirements.
+This creates one auditable, resumable planned-switchover sequence:
+
+#. ``inventory`` is accepted only in ``READY`` or ``PROTECTION_RESTORED``.
+#. ``validate-switchover`` requires an inventory no older than one hour.
+#. ``switchover`` additionally requires a successful validation for that exact
+   inventory.
+#. ``validate-post-switchover`` requires ``SERVICE_RESTORED`` and a successful
+   switchover as the latest successful workflow step.
+#. ``reprotect`` requires ``SERVICE_RESTORED`` and a successful post-switchover
+   validation after that switchover.
+
+Inspect the same gates used by submission automation with ``GET /v1/workflow``.
+The read-only dashboard renders the five stages, requirement LEDs and status
+explanations from this durable record. ``failover`` and explicit ``resume``
+remain separate recovery paths and are not advanced automatically.
+
 Pre-validation
 --------------
 
-``validate-switchover`` refreshes the inventory, validates the green health of
-both clusters, CCR aliases and roles, index replication markers, inventory
-freshness, checkpoint/RPO gates and prerequisites for a planned switch. It is
-safe to call repeatedly::
+``validate-switchover`` validates the green health of both clusters, CCR
+aliases and roles, index replication markers, inventory freshness,
+checkpoint/RPO gates and prerequisites for a planned switch. It is safe to call
+repeatedly after a fresh inventory::
 
+    api '{"command":"inventory"}'
     api '{"command":"validate-switchover"}'
 
 Switchover

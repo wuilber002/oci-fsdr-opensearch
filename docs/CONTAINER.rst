@@ -69,9 +69,10 @@ For a workstation, create a tunnel and then open the same URL locally::
 
 The dashboard is intentionally read-only and does not require the API Bearer
 token. It is safe to use for a local operator display because Compose binds the
-service only to ``127.0.0.1``; remote viewing must use an SSH tunnel. The screen
-refreshes every five seconds and obtains current document counts and CCR status
-without writing OpenSearch or FSDR state.
+service only to ``127.0.0.1``; remote viewing must use an SSH tunnel. Job,
+state and workflow-gate changes arrive through Server-Sent Events; the paired
+cluster comparison refreshes its document counts and CCR status every five
+seconds without writing OpenSearch or FSDR state.
 
 The dashboard keeps the console data structure—banner, paired cluster panels,
 per-index comparison, execution console and time footer—using a web-oriented
@@ -123,10 +124,11 @@ and captured console output::
       -H "Authorization: Bearer $FSDR_TOKEN" \
       https://127.0.0.1:1604/v1/jobs/<JOB_ID>/output
 
-``GET /v1/jobs`` and ``GET /v1/monitor`` require the Bearer token. The browser
-uses separate read-only local endpoints under ``/dashboard/v1/``. ``GET
-/healthz`` does not disclose state and is deliberately unauthenticated for
-local health checks.
+``GET /v1/jobs``, ``GET /v1/monitor`` and ``GET /v1/workflow`` require the
+Bearer token. ``/v1/workflow`` returns the durable planned-switchover gates and
+audit evidence used when accepting each workflow job. The browser uses separate
+read-only local endpoints under ``/dashboard/v1/``. ``GET /healthz`` does not
+disclose state and is deliberately unauthenticated for local health checks.
 
 Supported commands and execution mode
 -------------------------------------

@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field, model_validator
 from .client import clients
 from .cloud import Cloud, read_cache, runtime_config
 from .core import Error
+from .workflow import WORKFLOW_COMMANDS, record_event, step_for, workflow_snapshot
 from .web import DASHBOARD_HTML
 
 
@@ -206,6 +207,19 @@ class JobManager:
                            reason="api_restarted; FSDR state was preserved for explicit resume")
                 self.write(job)
 
+    def _record_workflow_outcome(self, job):
+        """Persist terminal workflow evidence separately from the controller state."""
+        try:
+            request = OperationRequest(**job["request"])
+            configured = _read_json(CONFIG, {})
+            state_dir = Path(request.state_dir or configured.get(
+                "state_dir", "/var/lib/oci-opensearch-fsdr"))
+            record_event(state_dir, job, _read_json(state_dir / "state.json", {}))
+        except Exception:
+            # The operation outcome remains authoritative even if its secondary
+            # dashboard/audit projection cannot be written.
+            pass
+
     def _work(self):
         while True:
             job_id = self.jobs.get()
@@ -224,6 +238,7 @@ class JobManager:
                            exit_code=result.returncode, finished_at=utc_now())
             except Exception as exc:  # The exception is intentionally not returned to API clients.
                 job.update(status="failed", exit_code=None, finished_at=utc_now(), reason=type(exc).__name__)
+            self._record_workflow_outcome(job)
             self.write(job)
             self.jobs.task_done()
 
@@ -331,15 +346,51 @@ def favicon():
     return Response(content=svg, media_type="image/svg+xml")
 
 
+def workflow_gate(request, manager):
+    """Reject out-of-order API workflow submissions before a child starts."""
+    if request.command not in WORKFLOW_COMMANDS:
+        return
+    configured = _read_json(CONFIG, {})
+    state_dir = Path(request.state_dir or configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+    snapshot = workflow_snapshot(state_dir, _read_json(state_dir / "state.json", {}), manager.recent())
+    step = step_for(snapshot, request.command)
+    if not step or not step["eligible"]:
+        raise HTTPException(status_code=409, detail={
+            "code": "workflow_prerequisites_unmet", "command": request.command,
+            "status": step.get("status") if step else "blocked",
+            "requirements": step.get("requirements", []) if step else [],
+        })
+
+
 @app.post("/v1/jobs", status_code=202, dependencies=[Depends(token_auth)])
 def submit(request: OperationRequest):
-    job = api_manager().submit(request)
+    manager = api_manager()
+    workflow_gate(request, manager)
+    job = manager.submit(request)
     return {"id": job["id"], "status": job["status"], "submitted_at": job["submitted_at"]}
 
 
 @app.get("/v1/jobs", dependencies=[Depends(token_auth)])
 def jobs():
     return {"jobs": api_manager().recent()}
+
+
+def current_workflow(manager=None):
+    configured = _read_json(CONFIG, {})
+    state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+    manager = manager or api_manager()
+    return workflow_snapshot(state_dir, _read_json(state_dir / "state.json", {}), manager.recent())
+
+
+@app.get("/v1/workflow", dependencies=[Depends(token_auth)])
+def workflow():
+    """Return durable workflow gates and audit evidence for automation."""
+    return current_workflow()
+
+
+@app.get("/dashboard/v1/workflow")
+def dashboard_workflow():
+    return current_workflow()
 
 
 @app.get("/dashboard/v1/jobs")
@@ -543,7 +594,10 @@ def monitor_snapshot():
     configured = _read_json(CONFIG, {})
     state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
     state_file = state_dir / "state.json"
-    signature = (str(CONFIG), _file_version(CONFIG), _file_version(state_file))
+    manager = getattr(app.state, "manager", None)
+    signature = (str(CONFIG), _file_version(CONFIG), _file_version(state_file),
+                 _file_version(state_dir / "workflow.json"),
+                 manager.job_revision() if manager else None)
     try:
         lifetime = max(1, float(os.environ.get("FSDR_MONITOR_SNAPSHOT_CACHE_SECONDS", "10")))
     except ValueError:
@@ -572,7 +626,9 @@ def _monitor_snapshot(configured, state_dir, state):
             "current_step": (state.get("transition") or {}).get("step"),
             "current_index": (state.get("transition") or {}).get("current_index"),
             "indices": state.get("indices", []), "clusters": {}, "errors": [],
-            "topology": "unavailable", "topology_directions": []}
+            "topology": "unavailable", "topology_directions": [],
+            "workflow": workflow_snapshot(state_dir, state,
+                getattr(app.state, "manager", None).recent() if getattr(app.state, "manager", None) else [])}
     if not secret_id:
         base["errors"].append("Discovery is unavailable. Run discover or inventory first.")
         return base
