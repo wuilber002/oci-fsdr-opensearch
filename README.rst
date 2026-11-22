@@ -33,6 +33,7 @@ Documentation
 
 * `Container deployment, API and web console <docs/CONTAINER.rst>`_
 * `FSDR workflow and operational commands <docs/FSDR.rst>`_
+* `Future multi-follower implementation plan <docs/MULTI_FOLLOWER_PLAN.rst>`_
 * `Instance Principal IAM requirements <docs/IAM.rst>`_
 * ``secret.example.json``: expected Vault Secret payload.
 
