@@ -75,6 +75,12 @@ def record_event(state_dir: Path, job: dict[str, Any], state: dict[str, Any] | N
         "reason": job.get("reason"), "phase": (state or {}).get("phase"),
         "inventory_at": (state or {}).get("inventory_at"),
     }
+    evidence = job.get("workflow_evidence") or {}
+    if isinstance(evidence.get("requirements"), list):
+        # Preserve the gates that admitted this execution. A later phase
+        # change is not allowed to repaint a completed historical step.
+        event["requirements"] = evidence["requirements"]
+        event["requirements_captured_at"] = evidence.get("captured_at")
     events = [item for item in ledger["events"] if item.get("job_id") != event["job_id"]]
     event["sequence"] = max((item.get("sequence", 0) for item in events), default=0) + 1
     events.append(event)
@@ -243,6 +249,7 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
         requirements = list(rules[command])
         active = current.get(command)
         latest = _latest(events, command)
+        frozen_requirements = (latest or {}).get("requirements")
         eligible = all(item["met"] for item in requirements) and not controller_busy
         if controller_busy and not active:
             requirements.insert(0, _requirement("controller-idle", False,
@@ -272,8 +279,22 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
         attempt = active or latest or {}
         last_attempt_at = (attempt.get("finished_at") or attempt.get("started_at")
                            or attempt.get("submitted_at"))
+        displayed_requirements = requirements
+        if latest and latest.get("status") == "succeeded":
+            if isinstance(frozen_requirements, list):
+                displayed_requirements = list(frozen_requirements)
+            else:
+                # Jobs recorded before gate snapshots existed still represent
+                # successful admission. Preserve that fact for the dashboard
+                # rather than evaluating their old gates against a newer DR
+                # phase (for example SERVICE_RESTORED after switchover).
+                displayed_requirements = [{**item, "met": True,
+                                         "detail": "Satisfied when this successful execution began.",
+                                         "level": "waiting"}
+                                        for item in requirements]
         steps.append({"command": command, "label": label, "status": status, "status_detail": detail,
-                      "eligible": eligible, "requirements": requirements,
+                      "eligible": eligible,
+                      "requirements": displayed_requirements,
                       "last_event": latest, "last_attempt_at": last_attempt_at})
     by_command = {step["command"]: step for step in steps}
     paths = [{**path, "steps": [by_command[command] for command in path["steps"]],

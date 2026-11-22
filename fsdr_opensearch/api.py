@@ -264,12 +264,40 @@ class JobManager:
             # dashboard/audit projection cannot be written.
             pass
 
+    def _capture_workflow_evidence(self, job):
+        """Freeze the gates that admitted a workflow step before it runs.
+
+        A successful switchover intentionally changes the durable FSDR phase.
+        That later state must not repaint its already-satisfied inventory and
+        validation gates as failures in the recovery-path history.
+        """
+        try:
+            request = OperationRequest(**job["request"])
+            if request.command not in WORKFLOW_COMMANDS:
+                return None
+            configured = _read_json(CONFIG, {})
+            state_dir = Path(request.state_dir or configured.get(
+                "state_dir", "/var/lib/oci-opensearch-fsdr"))
+            snapshot = workflow_snapshot(state_dir, _read_json(state_dir / "state.json", {}),
+                                         self.recent(), candidate=dump_model(request))
+            step = step_for(snapshot, request.command)
+            if not step:
+                return None
+            return {"captured_at": utc_now(), "requirements": step["requirements"]}
+        except Exception:
+            # The command remains authoritative even when a dashboard-only
+            # evidence snapshot cannot be built.
+            return None
+
     def _work(self):
         while True:
             job_id = self.jobs.get()
             try:
                 job = self.read(job_id)
                 job.update(status="running", started_at=utc_now())
+                evidence = self._capture_workflow_evidence(job)
+                if evidence:
+                    job["workflow_evidence"] = evidence
                 self.write(job)
                 request = OperationRequest(**job["request"])
                 output = self.output_path(job_id)

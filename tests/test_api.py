@@ -83,13 +83,12 @@ class ApiTests(unittest.TestCase):
         self.assertIn("function stateLabel", api.DASHBOARD_HTML)
         self.assertIn("function summaryCard", api.DASHBOARD_HTML)
         self.assertIn("summary-card", api.DASHBOARD_HTML)
-        self.assertIn("Planned switchover workflow", api.DASHBOARD_HTML)
         self.assertIn("Recovery paths", api.DASHBOARD_HTML)
         self.assertIn("renderRecoveryPaths", api.DASHBOARD_HTML)
         self.assertIn("drawRecoveryConnectors", api.DASHBOARD_HTML)
         self.assertIn("recovery-connectors", api.DASHBOARD_HTML)
         self.assertIn("recovery-connector-blocked", api.DASHBOARD_HTML)
-        self.assertIn("recovery-connector-x", api.DASHBOARD_HTML)
+        self.assertIn("recovery-connector-open", api.DASHBOARD_HTML)
         self.assertIn("state-service-restored{background:#102a45", api.DASHBOARD_HTML)
         self.assertIn("ACTIVE PATH", api.DASHBOARD_HTML)
         self.assertIn("path-unavailable", api.DASHBOARD_HTML)
@@ -98,8 +97,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("function flowCard", api.DASHBOARD_HTML)
         self.assertIn("--:--:-- --/--/----", api.DASHBOARD_HTML)
         self.assertIn("requirementTooltip", api.DASHBOARD_HTML)
-        self.assertIn("workflowCard", api.DASHBOARD_HTML)
         self.assertNotIn("Protected documents", api.DASHBOARD_HTML)
+        self.assertNotIn("Planned switchover workflow", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
 
@@ -145,6 +144,25 @@ class ApiTests(unittest.TestCase):
             self.assertIsNone(reset["selected_path"])
             self.assertTrue(reset["paths_resettable"])
             self.assertFalse(any(path["unavailable"] for path in reset["paths"]))
+
+    def test_completed_step_preserves_its_admission_gates_after_transition(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            job = {
+                "id": "inventory-success", "request": {"command": "inventory"},
+                "status": "succeeded", "submitted_at": "2026-01-01T00:00:00Z",
+                "started_at": "2026-01-01T00:00:01Z", "finished_at": "2026-01-01T00:00:02Z",
+                "workflow_evidence": {"captured_at": "2026-01-01T00:00:01Z", "requirements": [{
+                    "key": "stable-state", "met": True, "detail": "FSDR was READY.",
+                    "explanation": "The step was admitted from a stable state.", "level": "waiting",
+                }]},
+            }
+            record_event(state_dir, job, {"phase": "SERVICE_RESTORED"})
+            snapshot = workflow_snapshot(state_dir, {"phase": "SERVICE_RESTORED"})
+            inventory = step_for(snapshot, "inventory")
+        self.assertEqual(inventory["status"], "succeeded")
+        self.assertTrue(inventory["requirements"][0]["met"])
+        self.assertEqual(inventory["requirements"][0]["detail"], "FSDR was READY.")
 
     def test_api_workflow_gate_rejects_out_of_order_switchover(self):
         class Manager:
