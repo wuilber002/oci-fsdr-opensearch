@@ -63,6 +63,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("EventSource", api.DASHBOARD_HTML)
         self.assertIn("/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events", api.DASHBOARD_HTML)
         self.assertIn("/dashboard/v1/jobs/events", api.DASHBOARD_HTML)
+        self.assertIn("/dashboard/v1/state/events", api.DASHBOARD_HTML)
         self.assertIn("setInterval(refreshComparison,5000)", api.DASHBOARD_HTML)
         self.assertNotIn("setInterval(refresh,5000)", api.DASHBOARD_HTML)
         self.assertIn("topology-unidirectional", api.DASHBOARD_HTML)
@@ -114,6 +115,21 @@ class ApiTests(unittest.TestCase):
         self.assertIn("id: 7", event)
         self.assertIn("event: jobs", event)
         self.assertIn('"revision": 7', event)
+
+    def test_dashboard_state_stream_announces_current_state_version(self):
+        async def first_event(path):
+            stream = api.dashboard_state_stream(path)
+            try:
+                return await anext(stream)
+            finally:
+                await stream.aclose()
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text("{}", encoding="utf-8")
+            event = asyncio.run(first_event(path))
+        self.assertIn("event: state", event)
+        self.assertIn('"version"', event)
 
     def test_new_configured_deployment_queues_initial_inventory(self):
         class Manager:

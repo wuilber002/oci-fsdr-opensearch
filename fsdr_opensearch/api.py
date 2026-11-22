@@ -429,6 +429,21 @@ async def dashboard_jobs_stream(manager, revision):
         revision = await asyncio.to_thread(manager.wait_for_job_change, revision, 15)
 
 
+async def dashboard_state_stream(state_file):
+    """Notify dashboard clients when the child controller persists state."""
+    last_version = object()
+    last_keepalive = time.monotonic()
+    while True:
+        version = _file_version(state_file)
+        if version != last_version:
+            last_version = version
+            yield "event: state\ndata: {}\n\n".format(json.dumps({"version": version}))
+        if time.monotonic() - last_keepalive >= 15:
+            yield ": keepalive\n\n"
+            last_keepalive = time.monotonic()
+        await asyncio.sleep(0.4)
+
+
 @app.get("/dashboard/v1/jobs/{job_id}/events")
 async def dashboard_output_events(job_id: str, request: Request):
     """Stream a selected job log to the read-only local dashboard via SSE."""
@@ -454,6 +469,16 @@ async def dashboard_jobs_events(request: Request):
     except ValueError:
         revision = 0
     return StreamingResponse(dashboard_jobs_stream(api_manager(), revision),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/dashboard/v1/state/events")
+async def dashboard_state_events():
+    """Push durable FSDR state changes to the public local dashboard."""
+    configured = _read_json(CONFIG, {})
+    state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+    return StreamingResponse(dashboard_state_stream(state_dir / "state.json"),
                              media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
@@ -543,6 +568,7 @@ def _monitor_snapshot(configured, state_dir, state):
     secret_id = configured.get("secret_id")
     base = {"observed_at": utc_now(), "phase": state.get("phase"),
             "primary": state.get("active"), "inventory_at": state.get("inventory_at"),
+            "state_updated_at": state.get("updated_at"),
             "current_step": (state.get("transition") or {}).get("step"),
             "current_index": (state.get("transition") or {}).get("current_index"),
             "indices": state.get("indices", []), "clusters": {}, "errors": [],

@@ -38,6 +38,12 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .stat.topology-unidirectional .stat-value{color:#fff;font-weight:750}
 .stat.topology-bidirectional{background:#351821;border-color:#7f1d2d}
 .stat.topology-bidirectional .stat-value{color:#fff;font-weight:750;cursor:help}
+.state-card{min-width:240px}
+.state-card .state-value{min-height:42px;margin-top:7px;display:flex;align-items:center;color:#fff;font-size:20px;font-weight:800;line-height:1.05}
+.state-card.state-ready,.state-card.state-protection-restored{background:#10291f;border-color:#256342}
+.state-card.state-service-restored{background:#102a45;border-color:#244e71}
+.state-card.state-transition,.state-card.state-reprotecting{background:#3b260f;border-color:#8a4b15}
+.state-card.state-error{background:#351821;border-color:#7f1d2d}
 .card{overflow:hidden}
 .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .card-head,.section-head{padding:17px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
@@ -141,12 +147,14 @@ tr:last-child td{border-bottom:0}
   <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span></footer>
 </main>
 <script>
-let selected='',historyPage=0,historyRows=[],outputStream=null,jobsStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=11;
+let selected='',historyPage=0,historyRows=[],latestJob=null,outputStream=null,jobsStream=null,stateStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=11;
 const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(path){let r=await fetch(path);if(!r.ok)throw new Error(await r.text());return r}
 function badge(status,error){let value=error||status||'Unknown',kind=error?'error':(/^(SYNCING|PRIMARY|succeeded)$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/failed/i.test(value)?'error':'neutral'),longStatus=!error&&String(value).toUpperCase()==='REPLICATION NOT IN PROGRESS',label=longStatus?'REPLICATION NOT<br>IN PROGRESS':esc(value);return '<span class="badge '+kind+(longStatus?' long-status':'')+'">'+label+'</span>'}
 function statusIcon(status){let symbols={queued:'◷',running:'◌',succeeded:'✓',failed:'✕',interrupted:'!'},value=status||'unknown',kind=/^succeeded$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/^failed$/i.test(value)?'error':'neutral',state=String(value).toLowerCase().replace(/[^a-z0-9_-]/g,'-');return '<span class="status-icon '+kind+' '+state+'" title="'+esc(value)+'" aria-label="'+esc(value)+'">'+(symbols[value]||'?')+'</span>'}
 function stat(label,value,note,style='',tooltip=''){return '<div class="stat '+style+'"><div class="stat-label">'+esc(label)+'</div><div class="stat-value"'+(tooltip?' title="'+esc(tooltip)+'" aria-label="'+esc(tooltip)+'"':'')+'>'+esc(value)+'</div><div class="stat-note">'+esc(note)+'</div></div>'}
+function displayTime(value){if(!value)return 'No status update';let date=new Date(typeof value==='number'?value*1000:value);return Number.isNaN(date.getTime())?'No status update':date.toLocaleString()}
+function stateStat(mon){let phase=mon.phase||'Unavailable',failed=Boolean((mon.errors||[]).length)||['failed','interrupted'].includes(latestJob?.status),tone='state-'+phase.toLowerCase().replace(/_/g,'-'),timestamp=mon.state_updated_at,reason='';if(failed){tone='state-error';timestamp=latestJob?.finished_at||latestJob?.started_at||latestJob?.submitted_at||timestamp;reason=latestJob?.reason||mon.errors?.[0]||'The latest FSDR operation did not complete successfully.'}let label=esc(phase).replace(/_/g,'<br>');return '<div class="stat state-card '+tone+'"><div class="stat-label">FSDR State</div><div class="state-value"'+(reason?' title="'+esc(reason)+'" aria-label="'+esc(reason)+'"':'')+'>'+label+'</div><div class="stat-note">'+esc(displayTime(timestamp))+'</div></div>'}
 function topologyState(mon){return mon.topology||((mon.primary&&Object.keys(mon.clusters||{}).length===2)?'unidirectional':'unavailable')}
 function topologyStat(topology){if(topology==='bidirectional'){let explanation='CCR is active in both directions. FSDR supports only one primary-to-follower direction because switchover and reprotect would otherwise be ambiguous.';return stat('Topology','Bidirectional','CCR direction observed','topology-bidirectional',explanation)}if(topology==='unidirectional')return stat('Topology','Unidirectional','CCR direction observed','topology-unidirectional');return stat('Topology','Unavailable','CCR direction observed')}
 function orderedClusterNames(mon){return Object.keys(mon.clusters||{}).sort((left,right)=>Number(right===mon.primary)-Number(left===mon.primary))}
@@ -160,30 +168,31 @@ function activeInfo(job){let running=job&&['running','queued'].includes(job.stat
 function renderHistory(){let pages=Math.max(1,Math.ceil(historyRows.length/HISTORY_PAGE_SIZE));historyPage=Math.min(historyPage,pages-1);let start=historyPage*HISTORY_PAGE_SIZE,visible=historyRows.slice(start,start+HISTORY_PAGE_SIZE),body=document.querySelector('#jobs');body.innerHTML=visible.map(j=>'<tr class="job '+(j.id===selected?'selected':'')+'" data-job-id="'+esc(j.id)+'"><td class="status-cell">'+statusIcon(j.status)+'</td><td class="index command">'+commandLabel(j.request.command)+'</td><td>'+esc(j.submitted_at)+'</td><td>'+esc(j.finished_at)+'</td></tr>').join('')||'<tr><td class="empty" colspan="4">No jobs submitted yet.</td></tr>';body.querySelectorAll('[data-job-id]').forEach(row=>row.addEventListener('click',()=>{selected=row.dataset.jobId;renderHistory();output(selected)}));document.querySelector('#history-pagination').innerHTML=historyRows.length?'<button onclick="changeHistoryPage(-1)" '+(historyPage===0?'disabled':'')+'>Previous</button><span>Page '+(historyPage+1)+' / '+pages+'</span><button onclick="changeHistoryPage(1)" '+(historyPage===pages-1?'disabled':'')+'>Next</button>':''}
 function changeHistoryPage(delta){historyPage=Math.max(0,historyPage+delta);renderHistory()}
 function output(id){if(!id||streamingJob===id||loadedOutput===id)return;if(outputStream)outputStream.close();streamingJob=id;loadedOutput='';let console=document.querySelector('#active-console');console.textContent='';let stream=new EventSource('/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events');outputStream=stream;stream.addEventListener('output',event=>{if(selected!==id)return;console.textContent+=JSON.parse(event.data);console.scrollTop=console.scrollHeight});stream.addEventListener('end',()=>{if(outputStream===stream){stream.close();outputStream=null;streamingJob='';loadedOutput=id}});stream.addEventListener('error',()=>{if(stream.readyState===EventSource.CLOSED&&outputStream===stream){outputStream=null;streamingJob='';console.textContent||='Unable to stream this job log.'}})}
-function applyJobs(jobs){let active=jobs.jobs.find(j=>j.status==='running')||jobs.jobs.find(j=>j.status==='queued')||jobs.jobs[0];if(!selected&&active)selected=active.id;if(active&&['running','queued'].includes(active.status))selected=active.id;activeInfo(active);historyRows=jobs.jobs;document.querySelector('#job-count').textContent=historyRows.length+' recent job(s)';renderHistory();if(selected)output(selected)}
+function applyJobs(jobs){latestJob=jobs.jobs[0]||null;let active=jobs.jobs.find(j=>j.status==='running')||jobs.jobs.find(j=>j.status==='queued')||jobs.jobs[0];if(!selected&&active)selected=active.id;if(active&&['running','queued'].includes(active.status))selected=active.id;activeInfo(active);historyRows=jobs.jobs;document.querySelector('#job-count').textContent=historyRows.length+' recent job(s)';renderHistory();if(selected)output(selected)}
 async function refreshJobs(){let response=await api('/dashboard/v1/jobs');applyJobs(await response.json())}
-function connectJobsStream(){if(jobsStream)return;jobsStream=new EventSource('/dashboard/v1/jobs/events');jobsStream.addEventListener('jobs',()=>{refreshJobs().then(()=>{let latest=historyRows[0];if(latest&&['succeeded','failed','interrupted'].includes(latest.status))refreshOverview()}).catch(()=>{})})}
+function connectJobsStream(){if(jobsStream)return;jobsStream=new EventSource('/dashboard/v1/jobs/events');jobsStream.addEventListener('jobs',()=>{refreshJobs().then(refreshState).catch(()=>{})})}
+function connectStateStream(){if(stateStream)return;stateStream=new EventSource('/dashboard/v1/state/events');stateStream.addEventListener('state',()=>{refreshDashboard()})}
 function updateClock(){document.querySelector('#clock').textContent=new Date().toLocaleString()}
 document.querySelectorAll('.top-nav a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{let target=document.querySelector(link.getAttribute('href'));if(!target)return;event.preventDefault();target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'',link.getAttribute('href'));target.classList.remove('nav-target-flash');void target.offsetWidth;target.classList.add('nav-target-flash')}));
-function renderMonitor(mon,includeOverview){
-    let primary=clusterLabel(mon,mon.primary),topology=topologyState(mon),inventory=mon.inventory_at?new Date(mon.inventory_at*1000).toLocaleString():'No inventory';
+function renderMonitor(mon,includeOverview,includeComparison){
+    let primary=clusterLabel(mon,mon.primary),topology=topologyState(mon);
     let docs=mon.clusters?.[mon.primary]?.documents||0;
-    if(includeOverview)document.querySelector('#overview').innerHTML=stat('Observed primary',primary,'Current write target')+stat('FSDR inventory',mon.phase||'Unavailable',inventory)+topologyStat(topology)+stat('Protected documents',docs,'Unique documents on primary');
-    document.querySelector('#comparison').innerHTML=orderedClusterNames(mon).map(k=>cluster(mon.clusters[k],k,mon.phase)).join('');
-    document.querySelector('#topology').textContent=topology==='unavailable'?'Topology unavailable':topology.charAt(0).toUpperCase()+topology.slice(1)+' topology';
+    if(includeOverview)document.querySelector('#overview').innerHTML=stat('Observed primary',primary,'Current write target')+stateStat(mon)+topologyStat(topology)+stat('Protected documents',docs,'Unique documents on primary');
+    if(includeComparison){document.querySelector('#comparison').innerHTML=orderedClusterNames(mon).map(k=>cluster(mon.clusters[k],k,mon.phase)).join('');document.querySelector('#topology').textContent=topology==='unavailable'?'Topology unavailable':topology.charAt(0).toUpperCase()+topology.slice(1)+' topology'}
 }
-async function refreshMonitor(includeOverview){
+async function refreshMonitor(includeOverview,includeComparison){
   try{
     let mon=await (await api('/dashboard/v1/monitor')).json();
     document.querySelector('#notice').hidden=true;
-    renderMonitor(mon,includeOverview);
+    renderMonitor(mon,includeOverview,includeComparison);
   }catch(e){
     let notice=document.querySelector('#notice');notice.textContent='Dashboard refresh failed: '+e.message;notice.hidden=false;
   }
 }
-function refreshOverview(){return refreshMonitor(true)}
-function refreshComparison(){return refreshMonitor(false)}
+function refreshDashboard(){return refreshMonitor(true,true)}
+function refreshState(){return refreshMonitor(true,false)}
+function refreshComparison(){return refreshMonitor(false,true)}
 updateClock();setInterval(updateClock,1000);
-refreshOverview();refreshJobs();connectJobsStream();setInterval(refreshComparison,5000);
+refreshDashboard();refreshJobs().then(refreshState);connectJobsStream();connectStateStream();setInterval(refreshComparison,5000);
 </script>
 </body></html>'''
