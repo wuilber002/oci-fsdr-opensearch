@@ -118,6 +118,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn("workflowAttemptTime", api.DASHBOARD_HTML)
         self.assertIn("FLOW_CARD_TEMPLATE", api.DASHBOARD_HTML)
         self.assertIn("function flowCard", api.DASHBOARD_HTML)
+        self.assertIn("function inventoryAge", api.DASHBOARD_HTML)
+        self.assertIn("function updateInventoryAges", api.DASHBOARD_HTML)
+        self.assertIn("inventory-age", api.DASHBOARD_HTML)
         self.assertIn("--:--:-- --/--/----", api.DASHBOARD_HTML)
         self.assertIn("requirementTooltip", api.DASHBOARD_HTML)
         self.assertNotIn("Protected documents", api.DASHBOARD_HTML)
@@ -296,6 +299,7 @@ class ApiTests(unittest.TestCase):
                         "finished_at": timestamp, "exit_code": 0,
                     }, state)
                 snapshot = workflow_snapshot(state_dir, state)
+                self.assertEqual(snapshot["inventory_at"], state["inventory_at"])
                 self.assertEqual(step_for(snapshot, "inventory")["status"], "ready")
                 self.assertEqual(step_for(snapshot, "validate-switchover")["status"], "waiting")
                 switchover = step_for(snapshot, "switchover")

@@ -344,6 +344,7 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
                                   and path["id"] != selected_path)}
              for path in RECOVERY_PATHS]
     return {"phase": phase, "inventory_max_age_seconds": INVENTORY_MAX_AGE_SECONDS,
+            "inventory_at": inventory_at,
             "selected_path": selected_path,
             "paths_resettable": phase in STABLE_PHASES and not reset_pending,
             "cycle_reset_at": completed_cycle.get("finished_at") if completed_cycle else None,
