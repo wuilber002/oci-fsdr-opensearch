@@ -286,6 +286,11 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
         requirements = list(rules[command])
         active = current.get(command)
         latest = _latest(cycle_events, command)
+        # A valid inventory remains completed after a recovery cycle resets.
+        # It is still the evidence that admits validation, so keep its card,
+        # timestamp and connector green until the normal expiry is reached.
+        if command == "inventory" and latest is None and recorded_inventory:
+            latest = recorded_inventory
         frozen_requirements = (latest or {}).get("requirements")
         eligible = all(item["met"] for item in requirements) and not controller_busy
         if controller_busy and not active:

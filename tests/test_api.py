@@ -200,7 +200,8 @@ class ApiTests(unittest.TestCase):
 
             snapshot = workflow_snapshot(state_dir, state, now=now)
             self.assertEqual(snapshot["cycle_reset_at"], "2026-01-01T00:00:05Z")
-            self.assertEqual(step_for(snapshot, "inventory")["status"], "ready")
+            self.assertEqual(step_for(snapshot, "inventory")["status"], "succeeded")
+            self.assertEqual(step_for(snapshot, "inventory")["last_attempt_at"], "2026-01-01T00:00:01Z")
             self.assertEqual(step_for(snapshot, "validate-switchover")["status"], "ready")
             self.assertEqual(step_for(snapshot, "switchover")["status"], "waiting")
             self.assertIsNone(snapshot["selected_path"])
@@ -232,7 +233,7 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(pending["cycle_reset_pending_until"], finished_at + 10)
 
             reset = workflow_snapshot(state_dir, state, now=finished_at + 10.1)
-            self.assertEqual(step_for(reset, "inventory")["status"], "ready")
+            self.assertEqual(step_for(reset, "inventory")["status"], "succeeded")
             self.assertIsNone(reset["selected_path"])
             self.assertTrue(reset["paths_resettable"])
             self.assertIsNone(reset["cycle_reset_pending_until"])
@@ -287,7 +288,9 @@ class ApiTests(unittest.TestCase):
                     "finished_at": timestamp, "exit_code": 0,
                 }, state)
             snapshot = workflow_snapshot(state_dir, state, now=now)
+            inventory = step_for(snapshot, "inventory")
             validation = step_for(snapshot, "validate-switchover")
+            self.assertEqual(inventory["status"], "succeeded")
             self.assertTrue(validation["eligible"])
             self.assertTrue(snapshot["inventory"]["fresh"])
             self.assertEqual(snapshot["inventory"]["age_seconds"], 30 * 60)
