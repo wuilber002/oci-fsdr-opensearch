@@ -178,6 +178,50 @@ class JobManager:
         self.jobs.put(job_id)
         return job
 
+    def reject(self, request, rejection):
+        """Persist a refused submission without starting a controller process.
+
+        A workflow gate is an auditable decision: callers need the HTTP 409,
+        while operators need to see the same decision and its unmet gates in
+        the dashboard history.  It deliberately does not record a workflow
+        outcome because no FSDR operation was executed.
+        """
+        job_id = uuid.uuid4().hex
+        finished_at = utc_now()
+        job = {
+            "id": job_id,
+            "submitted_at": finished_at,
+            "started_at": None,
+            "finished_at": finished_at,
+            "status": "rejected",
+            "exit_code": None,
+            "reason": rejection.get("code", "request_rejected"),
+            "rejection": rejection,
+            "request": dump_model(request),
+            "output": self.output_path(job_id).name,
+        }
+        lines = [
+            "FSDR job rejected before execution.",
+            "Command: {}".format(request.command),
+            "Reason: {}".format(job["reason"]),
+            "",
+            "The controller did not start because required workflow gates are not satisfied.",
+        ]
+        requirements = rejection.get("requirements") or []
+        unmet = [item for item in requirements if not item.get("met")]
+        if unmet:
+            lines.extend(("", "Unmet requirements:"))
+            for item in unmet:
+                detail = item.get("detail") or item.get("key") or "Requirement not satisfied"
+                explanation = item.get("explanation")
+                lines.append("- {}".format(detail))
+                if explanation:
+                    lines.append("  {}".format(explanation))
+        self.output_path(job_id).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        os.chmod(self.output_path(job_id), 0o600)
+        self.write(job)
+        return job
+
     def idle(self):
         """Avoid accumulating periodic inventory jobs behind a DR operation."""
         return self.jobs.empty() and not any(
@@ -368,7 +412,15 @@ def workflow_gate(request, manager):
 @app.post("/v1/jobs", status_code=202, dependencies=[Depends(token_auth)])
 def submit(request: OperationRequest):
     manager = api_manager()
-    workflow_gate(request, manager)
+    try:
+        workflow_gate(request, manager)
+    except HTTPException as exc:
+        if exc.status_code != 409 or not isinstance(exc.detail, dict):
+            raise
+        rejected = manager.reject(request, exc.detail)
+        detail = dict(exc.detail)
+        detail.update(job_id=rejected["id"], rejected_at=rejected["finished_at"])
+        raise HTTPException(status_code=409, detail=detail) from None
     job = manager.submit(request)
     return {"id": job["id"], "status": job["status"], "submitted_at": job["submitted_at"]}
 
@@ -438,7 +490,7 @@ def dashboard_output(job_id: str):
 
 async def dashboard_output_stream(manager, job_id, offset):
     """Tail one job's output as SSE without retaining output in memory."""
-    terminal = {"succeeded", "failed", "interrupted"}
+    terminal = {"succeeded", "failed", "interrupted", "rejected"}
     last_keepalive = time.monotonic()
     while True:
         try:

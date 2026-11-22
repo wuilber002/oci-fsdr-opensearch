@@ -115,8 +115,12 @@ The helper writes its progress to standard error and prints the final job
 record plus captured controller output to standard output. It exits with
 ``0`` only when the API reports ``succeeded``. For a failed job, it preserves
 the controller exit code when it is between ``1`` and ``125``; interrupted,
-invalid, and transport failures return a non-zero exit code. This makes the
-helper suitable as an external FSDR workflow step.
+invalid, rejected, and transport failures return a non-zero exit code. When
+the API rejects a request because its workflow prerequisites are not met, the
+helper prints each unmet prerequisite and its explanation. The API also stores
+that rejection as a ``rejected`` audit job, so its reason is available in the
+dashboard history and the selected job log. This makes the helper suitable as
+an external FSDR workflow step.
 
 To inspect an asynchronously submitted job manually, use its returned job ID
 and captured console output::

@@ -60,6 +60,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("job-grid", api.DASHBOARD_HTML)
         self.assertIn("clusterLabel", api.DASHBOARD_HTML)
         self.assertIn("statusIcon", api.DASHBOARD_HTML)
+        self.assertIn("rejected:'⊘'", api.DASHBOARD_HTML)
+        self.assertIn("rejectionReason", api.DASHBOARD_HTML)
         self.assertIn('class="status-cell"', api.DASHBOARD_HTML)
         self.assertIn("HISTORY_PAGE_SIZE=11", api.DASHBOARD_HTML)
         self.assertIn("history-pagination", api.DASHBOARD_HTML)
@@ -160,6 +162,58 @@ class ApiTests(unittest.TestCase):
         finally:
             api.CONFIG = original
 
+    def test_rejected_submission_is_persisted_for_dashboard_audit(self):
+        class Manager:
+            def __init__(self):
+                self.rejection = None
+
+            def recent(self):
+                return []
+
+            def reject(self, request, rejection):
+                self.rejection = rejection
+                return {"id": "rejected-job", "finished_at": "2026-01-01T00:00:00Z"}
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state = root / "state"
+                state.mkdir()
+                (state / "state.json").write_text(json.dumps({"phase": "READY"}), encoding="utf-8")
+                config = root / "config.json"
+                config.write_text(json.dumps({"state_dir": str(state)}), encoding="utf-8")
+                api.CONFIG = config
+                manager = Manager()
+                with patch.object(api, "api_manager", return_value=manager):
+                    with self.assertRaises(api.HTTPException) as rejected:
+                        api.submit(api.OperationRequest(command="switchover"))
+                self.assertEqual(rejected.exception.status_code, 409)
+                self.assertEqual(rejected.exception.detail["job_id"], "rejected-job")
+                self.assertEqual(manager.rejection["code"], "workflow_prerequisites_unmet")
+        finally:
+            api.CONFIG = original
+
+    def test_rejected_job_has_a_human_readable_audit_log(self):
+        original = api.JOB_DIRECTORY
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                api.JOB_DIRECTORY = Path(directory)
+                manager = api.JobManager()
+                job = manager.reject(api.OperationRequest(command="switchover"), {
+                    "code": "workflow_prerequisites_unmet",
+                    "requirements": [{"key": "inventory", "met": False,
+                                      "detail": "No fresh inventory is available.",
+                                      "explanation": "Run inventory before a planned switchover."}],
+                })
+                self.assertEqual(job["status"], "rejected")
+                self.assertEqual(manager.recent()[0]["id"], job["id"])
+                output = manager.output_path(job["id"]).read_text(encoding="utf-8")
+                self.assertIn("rejected before execution", output)
+                self.assertIn("No fresh inventory", output)
+        finally:
+            api.JOB_DIRECTORY = original
+
     def test_workflow_gate_leaves_explicit_resume_to_the_controller(self):
         class Manager:
             def recent(self):
@@ -223,6 +277,27 @@ class ApiTests(unittest.TestCase):
         self.assertIn("event: output", events[0])
         self.assertIn('"completed\\n"', events[0])
         self.assertIn("event: end", events[1])
+
+    def test_dashboard_job_log_stream_ends_for_rejected_job(self):
+        class Manager:
+            def __init__(self, directory):
+                self.directory = Path(directory)
+
+            def read(self, job_id):
+                return {"status": "rejected"}
+
+            def output_path(self, job_id):
+                return self.directory / (job_id + ".output")
+
+        async def read_events(manager):
+            return [event async for event in api.dashboard_output_stream(manager, "job", 0)]
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = Manager(directory)
+            manager.output_path("job").write_text("rejected\n", encoding="utf-8")
+            events = asyncio.run(read_events(manager))
+        self.assertEqual(len(events), 2)
+        self.assertIn('"rejected"', events[1])
 
     def test_dashboard_snapshot_payload_contains_monitor_and_job_history(self):
         class Manager:

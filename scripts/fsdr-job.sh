@@ -49,7 +49,51 @@ api() {
     -H "Authorization: Bearer $token" "$@"
 }
 
-submitted=$(api -H 'Content-Type: application/json' -d "$payload" https://127.0.0.1:1604/v1/jobs)
+response_file=$(mktemp)
+trap 'rm -f "$response_file"' EXIT
+http_status=$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' \
+  --cacert "$certificate" -H "Authorization: Bearer $token" \
+  -H 'Content-Type: application/json' -d "$payload" https://127.0.0.1:1604/v1/jobs) || {
+  echo "Unable to submit FSDR job: the local API could not be reached." >&2
+  exit 1
+}
+
+if [[ "$http_status" != "202" ]]; then
+  python3 - "$http_status" "$response_file" <<'PY' >&2
+import json
+import sys
+
+http_status, filename = sys.argv[1:]
+try:
+    payload = json.load(open(filename, encoding="utf-8"))
+except (OSError, ValueError):
+    payload = {}
+detail = payload.get("detail", payload)
+if not isinstance(detail, dict):
+    print("FSDR job request failed (HTTP {}): {}".format(http_status, detail or "no response body"))
+    raise SystemExit()
+
+if http_status == "409" and detail.get("code") == "workflow_prerequisites_unmet":
+    print("FSDR job rejected before execution: {}.".format(detail.get("command", "requested command")))
+    print("Reason: workflow prerequisites are not satisfied.")
+    job_id = detail.get("job_id")
+    if job_id:
+        print("Recorded in dashboard history as rejected job: {}.".format(job_id))
+    unmet = [item for item in detail.get("requirements", []) if not item.get("met")]
+    if unmet:
+        print("Unmet requirements:")
+        for item in unmet:
+            print("- {}".format(item.get("detail") or item.get("key") or "Requirement not satisfied"))
+            if item.get("explanation"):
+                print("  {}".format(item["explanation"]))
+else:
+    message = detail.get("message") or detail.get("code") or "request rejected"
+    print("FSDR job request failed (HTTP {}): {}".format(http_status, message))
+PY
+  exit 1
+fi
+
+submitted=$(cat "$response_file")
 job_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$submitted")
 printf 'FSDR job submitted: %s\n' "$job_id" >&2
 
@@ -69,7 +113,7 @@ print(job.get("status", "unknown"), job.get("exit_code") if job.get("exit_code")
     queued|running)
       sleep "$poll_interval"
       ;;
-    succeeded|failed|interrupted)
+    succeeded|failed|interrupted|rejected)
       break
       ;;
     *)
