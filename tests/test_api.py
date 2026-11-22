@@ -199,6 +199,36 @@ class ApiTests(unittest.TestCase):
             self.assertFalse(any(path["unavailable"] for path in snapshot["paths"]))
             self.assertEqual(len(snapshot["events"]), 5)
 
+    def test_reprotect_keeps_completed_path_visible_for_ten_seconds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            finished_at = 2_000_000_000
+            state = {"phase": "PROTECTION_RESTORED", "inventory_at": finished_at,
+                     "indices": [{"name": "orders"}]}
+            for sequence, command in enumerate((
+                    "inventory", "validate-switchover", "switchover",
+                    "validate-post-switchover", "reprotect"), start=1):
+                timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(
+                    finished_at - 5 + sequence))
+                record_event(state_dir, {
+                    "id": "{}-{}".format(command, sequence),
+                    "request": {"command": command}, "status": "succeeded",
+                    "submitted_at": timestamp, "started_at": timestamp,
+                    "finished_at": timestamp, "exit_code": 0,
+                }, state)
+
+            pending = workflow_snapshot(state_dir, state, now=finished_at + 5)
+            self.assertEqual(step_for(pending, "reprotect")["status"], "succeeded")
+            self.assertEqual(pending["selected_path"], "switchover")
+            self.assertFalse(pending["paths_resettable"])
+            self.assertEqual(pending["cycle_reset_pending_until"], finished_at + 10)
+
+            reset = workflow_snapshot(state_dir, state, now=finished_at + 10.1)
+            self.assertEqual(step_for(reset, "inventory")["status"], "ready")
+            self.assertIsNone(reset["selected_path"])
+            self.assertTrue(reset["paths_resettable"])
+            self.assertIsNone(reset["cycle_reset_pending_until"])
+
     def test_completed_step_preserves_its_admission_gates_after_transition(self):
         with tempfile.TemporaryDirectory() as directory:
             state_dir = Path(directory)

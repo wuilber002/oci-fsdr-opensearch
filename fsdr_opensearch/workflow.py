@@ -34,6 +34,7 @@ RECOVERY_PATHS = (
 )
 STABLE_PHASES = {"READY", "PROTECTION_RESTORED"}
 INVENTORY_MAX_AGE_SECONDS = 60 * 60
+RECOVERY_CYCLE_RESET_DELAY_SECONDS = 10
 LEDGER_FILE = "workflow.json"
 
 
@@ -145,11 +146,16 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     completed_cycle = (_latest(events, "reprotect") if phase == "PROTECTION_RESTORED" else None)
     completed_cycle = (completed_cycle if completed_cycle and completed_cycle.get("status") == "succeeded"
                        else None)
-    cycle_events = ([event for event in events if _event_order(event) > _event_order(completed_cycle)]
-                    if completed_cycle else events)
+    completed_at = _epoch((completed_cycle or {}).get("finished_at"))
+    cycle_reset_pending_until = (completed_at + RECOVERY_CYCLE_RESET_DELAY_SECONDS
+                                 if completed_at is not None else None)
+    reset_pending = bool(cycle_reset_pending_until and now < cycle_reset_pending_until)
+    cycle_boundary = completed_cycle if completed_cycle and not reset_pending else None
+    cycle_events = ([event for event in events if _event_order(event) > _event_order(cycle_boundary)]
+                    if cycle_boundary else events)
     fresh, fresh_detail = _fresh_inventory(state, now)
     cycle_inventory = _latest(cycle_events, "inventory")
-    if completed_cycle and not (cycle_inventory and cycle_inventory.get("status") == "succeeded"):
+    if cycle_boundary and not (cycle_inventory and cycle_inventory.get("status") == "succeeded"):
         fresh = False
         fresh_detail = "Start the new recovery cycle with inventory."
     validate = _latest(cycle_events, "validate-switchover")
@@ -166,7 +172,7 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     # Selecting a route is durable for the non-stable part of a recovery.  Once
     # protection is restored (or the controller returns to READY), either route
     # can be evaluated again for a new recovery cycle.
-    selected_path = active_transition or (None if phase in STABLE_PHASES else
+    selected_path = active_transition or (None if phase in STABLE_PHASES and not reset_pending else
                                           (transition_attempt or {}).get("command"))
 
     stable = phase in STABLE_PHASES
@@ -325,8 +331,10 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
                                   and path["id"] != selected_path)}
              for path in RECOVERY_PATHS]
     return {"phase": phase, "inventory_max_age_seconds": INVENTORY_MAX_AGE_SECONDS,
-            "selected_path": selected_path, "paths_resettable": phase in STABLE_PHASES,
+            "selected_path": selected_path,
+            "paths_resettable": phase in STABLE_PHASES and not reset_pending,
             "cycle_reset_at": completed_cycle.get("finished_at") if completed_cycle else None,
+            "cycle_reset_pending_until": cycle_reset_pending_until if reset_pending else None,
             "steps": steps, "detailed_steps": [by_command[command] for command, _ in WORKFLOW_STEPS],
             "paths": paths, "events": events[-50:]}
 

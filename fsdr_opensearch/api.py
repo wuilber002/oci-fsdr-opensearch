@@ -590,23 +590,32 @@ async def dashboard_events_stream(manager, refresh_seconds=5.0):
 async def dashboard_jobs_stream(manager, revision):
     """Publish job lifecycle updates to dashboard clients through SSE."""
     sent_initial = False
+    workflow_refresh_at = None
     while True:
         current = manager.job_revision()
-        if not sent_initial or current != revision:
+        now = time.time()
+        if not sent_initial or current != revision or (workflow_refresh_at is not None and now >= workflow_refresh_at):
             revision = current
             sent_initial = True
             # Do not call monitor_snapshot here. This feed must be able to
             # render a newly submitted or rejected job even if either remote
             # OpenSearch endpoint is slow or temporarily unavailable.
+            workflow = current_workflow(manager)
+            pending_reset = workflow.get("cycle_reset_pending_until")
+            workflow_refresh_at = (float(pending_reset) if isinstance(pending_reset, (int, float))
+                                   and pending_reset > now else None)
             yield "id: {}\nevent: jobs\ndata: {}\n\n".format(
                 revision, json.dumps({"revision": revision, "jobs": manager.recent(),
-                                      "workflow": current_workflow(manager)}))
+                                      "workflow": workflow}))
         # ``wait_for_job_change`` returns the revision that woke the waiter.
         # Do not assign it here: the next iteration must compare that new
         # value with the last revision actually sent to the browser.  Assigning
         # it first silently swallowed the event until another dashboard
         # refresh, leaving History ahead of Recovery paths for several seconds.
-        await asyncio.to_thread(manager.wait_for_job_change, revision, 15)
+        timeout = 15
+        if workflow_refresh_at is not None:
+            timeout = max(0.05, min(timeout, workflow_refresh_at - time.time()))
+        await asyncio.to_thread(manager.wait_for_job_change, revision, timeout)
 
 
 async def dashboard_state_stream(state_file):
