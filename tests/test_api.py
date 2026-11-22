@@ -68,6 +68,9 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn("setInterval(refresh,5000)", api.DASHBOARD_HTML)
         self.assertIn("topology-unidirectional", api.DASHBOARD_HTML)
         self.assertIn("topology-bidirectional", api.DASHBOARD_HTML)
+        self.assertIn("primary-identified", api.DASHBOARD_HTML)
+        self.assertIn("primary-unavailable", api.DASHBOARD_HTML)
+        self.assertIn("function stateLabel", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
 
