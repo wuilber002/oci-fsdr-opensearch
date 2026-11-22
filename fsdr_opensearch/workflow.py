@@ -169,6 +169,13 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     transition_attempt = max((event for event in (switch, failover) if event),
                              key=_event_order, default=None)
     active_transition = next((command for command in ("switchover", "failover") if command in current), None)
+    # Inventory freshness and pre-validation are admission gates until the
+    # switchover actually begins.  Once it has begun, their captured evidence
+    # belongs to that recovery cycle and must not be invalidated by elapsed
+    # time while post-transition validation and reprotect are running.
+    switchover_started = (bool(switch)
+                           or (current.get("switchover") or {}).get("status") == "running"
+                           or phase not in STABLE_PHASES)
     # Selecting a route is durable for the non-stable part of a recovery.  Once
     # protection is restored (or the controller returns to READY), either route
     # can be evaluated again for a new recovery cycle.
@@ -284,7 +291,12 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
             status = latest["status"]
             detail = latest.get("reason") or "The latest execution did not complete successfully."
         elif latest and latest.get("status") == "succeeded":
-            status, detail = "succeeded", "The latest execution completed successfully."
+            if command == "inventory" and not switchover_started and not fresh:
+                status, detail = "ready", "The latest inventory expired; run inventory again before switchover."
+            elif command == "validate-switchover" and not switchover_started and not fresh:
+                status, detail = "waiting", "The validated inventory expired; run inventory and validate again."
+            else:
+                status, detail = "succeeded", "The latest execution completed successfully."
         elif eligible:
             status, detail = "ready", "All prerequisites are met; this step can be submitted."
         elif any(item["level"] == "blocked" for item in requirements if not item["met"]):
@@ -308,7 +320,8 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
                                      "detail": "Satisfied when this active execution began.",
                                      "level": "waiting"}
                                     for item in requirements]
-        elif latest and latest.get("status") == "succeeded":
+        elif latest and latest.get("status") == "succeeded" and (
+                switchover_started or command not in {"inventory", "validate-switchover"}):
             if isinstance(frozen_requirements, list):
                 displayed_requirements = list(frozen_requirements)
             else:

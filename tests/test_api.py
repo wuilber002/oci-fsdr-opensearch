@@ -276,6 +276,54 @@ class ApiTests(unittest.TestCase):
             reprotect = step_for(snapshot, "reprotect")
         self.assertTrue(all(item["met"] for item in reprotect["requirements"]))
 
+    def test_stale_inventory_is_not_frozen_before_switchover_starts(self):
+        class Manager:
+            def recent(self):
+                return []
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state_dir = root / "state"
+                state_dir.mkdir()
+                state = {"phase": "READY", "inventory_at": time.time() - 3601}
+                timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                for command in ("inventory", "validate-switchover"):
+                    record_event(state_dir, {
+                        "id": command, "request": {"command": command}, "status": "succeeded",
+                        "submitted_at": timestamp, "started_at": timestamp,
+                        "finished_at": timestamp, "exit_code": 0,
+                    }, state)
+                snapshot = workflow_snapshot(state_dir, state)
+                self.assertEqual(step_for(snapshot, "inventory")["status"], "ready")
+                self.assertEqual(step_for(snapshot, "validate-switchover")["status"], "waiting")
+                switchover = step_for(snapshot, "switchover")
+                self.assertEqual(switchover["status"], "waiting")
+                self.assertFalse(switchover["eligible"])
+                self.assertFalse(next(item for item in switchover["requirements"]
+                                      if item["key"] == "fresh-inventory")["met"])
+
+                (state_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
+                config = root / "config.json"
+                config.write_text(json.dumps({"state_dir": str(state_dir)}), encoding="utf-8")
+                api.CONFIG = config
+                with self.assertRaises(api.HTTPException) as rejected:
+                    api.workflow_gate(api.OperationRequest(command="switchover"), Manager())
+                self.assertEqual(rejected.exception.status_code, 409)
+
+                transitioned = {**state, "phase": "SERVICE_RESTORED"}
+                record_event(state_dir, {
+                    "id": "switchover", "request": {"command": "switchover"}, "status": "succeeded",
+                    "submitted_at": timestamp, "started_at": timestamp,
+                    "finished_at": timestamp, "exit_code": 0,
+                }, transitioned)
+                frozen = workflow_snapshot(state_dir, transitioned)
+                self.assertEqual(step_for(frozen, "inventory")["status"], "succeeded")
+                self.assertEqual(step_for(frozen, "validate-switchover")["status"], "succeeded")
+        finally:
+            api.CONFIG = original
+
     def test_api_workflow_gate_rejects_out_of_order_switchover(self):
         class Manager:
             def recent(self):
