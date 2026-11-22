@@ -142,12 +142,21 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     current = _current_jobs(active_jobs)
     controller_busy = bool(active_jobs)
     phase = state.get("phase") or "READY"
+    completed_cycle = (_latest(events, "reprotect") if phase == "PROTECTION_RESTORED" else None)
+    completed_cycle = (completed_cycle if completed_cycle and completed_cycle.get("status") == "succeeded"
+                       else None)
+    cycle_events = ([event for event in events if _event_order(event) > _event_order(completed_cycle)]
+                    if completed_cycle else events)
     fresh, fresh_detail = _fresh_inventory(state, now)
-    validate = _latest(events, "validate-switchover")
-    switch = _latest(events, "switchover")
-    failover = _latest(events, "failover")
-    post = _latest(events, "validate-post-switchover")
-    last_success = _last_success(events)
+    cycle_inventory = _latest(cycle_events, "inventory")
+    if completed_cycle and not (cycle_inventory and cycle_inventory.get("status") == "succeeded"):
+        fresh = False
+        fresh_detail = "Start the new recovery cycle with inventory."
+    validate = _latest(cycle_events, "validate-switchover")
+    switch = _latest(cycle_events, "switchover")
+    failover = _latest(cycle_events, "failover")
+    post = _latest(cycle_events, "validate-post-switchover")
+    last_success = _last_success(cycle_events)
     inventory_at = state.get("inventory_at")
     transition_event = max((event for event in (switch, failover) if event and event.get("status") == "succeeded"),
                            key=_event_order, default=None)
@@ -248,7 +257,7 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     for command, label in ALL_WORKFLOW_STEPS:
         requirements = list(rules[command])
         active = current.get(command)
-        latest = _latest(events, command)
+        latest = _latest(cycle_events, command)
         frozen_requirements = (latest or {}).get("requirements")
         eligible = all(item["met"] for item in requirements) and not controller_busy
         if controller_busy and not active:
@@ -317,6 +326,7 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
              for path in RECOVERY_PATHS]
     return {"phase": phase, "inventory_max_age_seconds": INVENTORY_MAX_AGE_SECONDS,
             "selected_path": selected_path, "paths_resettable": phase in STABLE_PHASES,
+            "cycle_reset_at": completed_cycle.get("finished_at") if completed_cycle else None,
             "steps": steps, "detailed_steps": [by_command[command] for command, _ in WORKFLOW_STEPS],
             "paths": paths, "events": events[-50:]}
 

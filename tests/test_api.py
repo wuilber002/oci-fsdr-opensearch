@@ -154,6 +154,39 @@ class ApiTests(unittest.TestCase):
             self.assertTrue(reset["paths_resettable"])
             self.assertFalse(any(path["unavailable"] for path in reset["paths"]))
 
+    def test_successful_reprotect_resets_the_visual_workflow_cycle(self):
+        """A restored protection state starts the next path from inventory.
+
+        The ledger keeps the preceding operations for audit, but their green
+        cards/connectors must not be projected as the path for the next
+        recovery cycle.
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            now = time.time()
+            state = {"phase": "PROTECTION_RESTORED", "inventory_at": now,
+                     "indices": [{"name": "orders"}]}
+
+            for sequence, command in enumerate((
+                    "inventory", "validate-switchover", "switchover",
+                    "validate-post-switchover", "reprotect"), start=1):
+                timestamp = "2026-01-01T00:00:{:02d}Z".format(sequence)
+                record_event(state_dir, {
+                    "id": "{}-{}".format(command, sequence),
+                    "request": {"command": command}, "status": "succeeded",
+                    "submitted_at": timestamp, "started_at": timestamp,
+                    "finished_at": timestamp, "exit_code": 0,
+                }, state)
+
+            snapshot = workflow_snapshot(state_dir, state, now=now)
+            self.assertEqual(snapshot["cycle_reset_at"], "2026-01-01T00:00:05Z")
+            self.assertEqual(step_for(snapshot, "inventory")["status"], "ready")
+            self.assertEqual(step_for(snapshot, "validate-switchover")["status"], "waiting")
+            self.assertEqual(step_for(snapshot, "switchover")["status"], "waiting")
+            self.assertIsNone(snapshot["selected_path"])
+            self.assertFalse(any(path["unavailable"] for path in snapshot["paths"]))
+            self.assertEqual(len(snapshot["events"]), 5)
+
     def test_completed_step_preserves_its_admission_gates_after_transition(self):
         with tempfile.TemporaryDirectory() as directory:
             state_dir = Path(directory)
