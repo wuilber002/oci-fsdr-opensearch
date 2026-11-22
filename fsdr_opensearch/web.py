@@ -113,7 +113,7 @@ tr:last-child td{border-bottom:0}
 @keyframes status-spinner{to{transform:rotate(360deg)}}@keyframes ready-pulse{50%{opacity:.35;text-shadow:0 0 7px rgba(74,222,128,.9)}}
 .status-cell{width:1%;padding-right:5px;text-align:center}
 .controller-job{margin-bottom:22px}
-.job-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(420px,.85fr);align-items:stretch;height:680px}
+.job-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(420px,.85fr);align-items:stretch;height:630px}
 .job-panel{display:flex;flex-direction:column;min-width:0;min-height:0}
 .job-panel+.job-panel{border-left:1px solid var(--line)}
 .job-panel>.table-wrap,.job-panel>.console{flex:1;min-height:0}
@@ -166,7 +166,7 @@ tr:last-child td{border-bottom:0}
   <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span></footer>
 </main>
 <script>
-let selected='',historyPage=0,historyRows=[],latestJob=null,latestMonitorData=null,outputStream=null,dashboardStream=null,jobStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=11,INDEX_PAGE_SIZE=10;const indexPages={};
+let selected='',historyPage=0,historyRows=[],latestJob=null,latestMonitorData=null,outputStream=null,dashboardStream=null,jobStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=10,INDEX_PAGE_SIZE=10;const indexPages={};
 const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const POPUP_TEMPLATE=Object.freeze({id:'ui-popup',attribute:'data-popup',visibleClass:'is-visible',offset:10,viewportInset:12});
 function popupAttrs(message){let text=String(message??'').trim();return text?' '+POPUP_TEMPLATE.attribute+'="'+esc(text)+'" aria-describedby="'+POPUP_TEMPLATE.id+'" tabindex="0"':''}
