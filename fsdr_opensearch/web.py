@@ -35,9 +35,9 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .stat-value{font-size:24px;font-weight:750;margin-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stat-note{margin-top:6px;color:var(--muted);font-size:12px}
 .stat.topology-unidirectional{background:#10291f;border-color:#256342}
-.stat.topology-unidirectional .stat-value{color:#86efac}
+.stat.topology-unidirectional .stat-value{color:#fff;font-weight:750}
 .stat.topology-bidirectional{background:#351821;border-color:#7f1d2d}
-.stat.topology-bidirectional .stat-value{color:#fda4af;cursor:help}
+.stat.topology-bidirectional .stat-value{color:#fff;font-weight:750;cursor:help}
 .card{overflow:hidden}
 .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .card-head,.section-head{padding:17px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
