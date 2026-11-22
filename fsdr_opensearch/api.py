@@ -545,7 +545,8 @@ def _monitor_snapshot(configured, state_dir, state):
             "primary": state.get("active"), "inventory_at": state.get("inventory_at"),
             "current_step": (state.get("transition") or {}).get("step"),
             "current_index": (state.get("transition") or {}).get("current_index"),
-            "indices": state.get("indices", []), "clusters": {}, "errors": []}
+            "indices": state.get("indices", []), "clusters": {}, "errors": [],
+            "topology": "unavailable", "topology_directions": []}
     if not secret_id:
         base["errors"].append("Discovery is unavailable. Run discover or inventory first.")
         return base
@@ -566,6 +567,7 @@ def _monitor_snapshot(configured, state_dir, state):
             "Cannot prepare OpenSearch observer: unexpected {}. Run inventory again; "
             "see the controller logs if it persists.".format(type(exc).__name__))
         return base
+    observed_directions = set()
     for name in ("a", "b"):
         cluster = cfg["clusters"][name]
         view = {"name": cluster["display_name"], "id": cluster["id"],
@@ -596,8 +598,10 @@ def _monitor_snapshot(configured, state_dir, state):
                     raise Error("Index was not returned by the document count request")
                 item["documents"] = counts[index]
                 view["documents"] += item["documents"]
+                status = cs[name].status(index)
+                if status.get("status") == "SYNCING":
+                    observed_directions.add(("b" if name == "a" else "a", name))
                 if state.get("active") != name:
-                    status = cs[name].status(index)
                     details = status.get("syncing_details", {})
                     item["replication"] = {"status": status.get("status"),
                                            "leader_checkpoint": details.get("leader_checkpoint"),
@@ -610,6 +614,12 @@ def _monitor_snapshot(configured, state_dir, state):
         if any(item["error"] for item in view["indices"]):
             view["error"] = "One or more index observations failed."
         base["clusters"][name] = view
+    base["topology_directions"] = ["{}->{}".format(source, target)
+                                   for source, target in sorted(observed_directions)]
+    if state.get("active") in {"a", "b"}:
+        directions = {("a", "b"), ("b", "a")}
+        base["topology"] = ("bidirectional" if directions.issubset(observed_directions)
+                            else "unidirectional")
     return base
 
 

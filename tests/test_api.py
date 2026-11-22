@@ -65,6 +65,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("/dashboard/v1/jobs/events", api.DASHBOARD_HTML)
         self.assertIn("setInterval(refreshComparison,5000)", api.DASHBOARD_HTML)
         self.assertNotIn("setInterval(refresh,5000)", api.DASHBOARD_HTML)
+        self.assertIn("topology-unidirectional", api.DASHBOARD_HTML)
+        self.assertIn("topology-bidirectional", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
         self.assertNotIn("api-token", api.DASHBOARD_HTML)
 
@@ -176,8 +178,9 @@ class ApiTests(unittest.TestCase):
 
     def test_monitor_reports_the_live_fsdr_replication_marker(self):
         class Client:
-            def __init__(self, marked):
+            def __init__(self, marked, syncing):
                 self.marked = marked
+                self.syncing = syncing
 
             def request(self, method, path):
                 assert (method, path) == ("GET", "/_mapping")
@@ -189,7 +192,8 @@ class ApiTests(unittest.TestCase):
                 return {"orders": 11}
 
             def status(self, index):
-                return {"status": "SYNCING", "syncing_details": {}}
+                return {"status": "SYNCING" if self.syncing else "REPLICATION NOT IN PROGRESS",
+                        "syncing_details": {}}
 
         original = api.CONFIG
         try:
@@ -209,12 +213,48 @@ class ApiTests(unittest.TestCase):
                     "b": {"id": "b-id", "display_name": "Beta"},
                 }}
                 with patch("fsdr_opensearch.api._observer_clients",
-                           return_value=(cfg, {"a": Client(True), "b": Client(False)})):
+                           return_value=(cfg, {"a": Client(True, False), "b": Client(False, True)})):
                     data = api.monitor_snapshot()
         finally:
             api.CONFIG = original
         self.assertTrue(data["clusters"]["a"]["indices"][0]["fsdr_replicate"])
         self.assertFalse(data["clusters"]["b"]["indices"][0]["fsdr_replicate"])
+        self.assertEqual(data["topology"], "unidirectional")
+
+    def test_monitor_marks_bidirectional_ccr_as_unsupported_topology(self):
+        class Client:
+            def request(self, method, path):
+                return {"orders": {"mappings": {"_meta": {"fsdr": {"replicate": True}}}}}
+
+            def document_counts(self, scoped=False):
+                return {"orders": 11}
+
+            def status(self, index):
+                return {"status": "SYNCING", "syncing_details": {}}
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state = root / "state"
+                state.mkdir()
+                (state / "state.json").write_text(json.dumps({
+                    "active": "a", "indices": [{"a": "orders", "b": "orders"}],
+                }))
+                config = root / "config.json"
+                config.write_text(json.dumps({"secret_id": "secret", "state_dir": str(state)}))
+                api.CONFIG = config
+                cfg = {"clusters": {
+                    "a": {"id": "a-id", "display_name": "Alpha"},
+                    "b": {"id": "b-id", "display_name": "Beta"},
+                }}
+                with patch("fsdr_opensearch.api._observer_clients",
+                           return_value=(cfg, {"a": Client(), "b": Client()})):
+                    data = api.monitor_snapshot()
+        finally:
+            api.CONFIG = original
+        self.assertEqual(data["topology"], "bidirectional")
+        self.assertEqual(data["topology_directions"], ["a->b", "b->a"])
 
     def test_observer_reports_incomplete_discovery_cache(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -34,6 +34,10 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .stat-label{font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:750;text-transform:uppercase}
 .stat-value{font-size:24px;font-weight:750;margin-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .stat-note{margin-top:6px;color:var(--muted);font-size:12px}
+.stat.topology-unidirectional{background:#10291f;border-color:#256342}
+.stat.topology-unidirectional .stat-value{color:#86efac}
+.stat.topology-bidirectional{background:#351821;border-color:#7f1d2d}
+.stat.topology-bidirectional .stat-value{color:#fda4af;cursor:help}
 .card{overflow:hidden}
 .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .card-head,.section-head{padding:17px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
@@ -142,7 +146,9 @@ const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>'
 async function api(path){let r=await fetch(path);if(!r.ok)throw new Error(await r.text());return r}
 function badge(status,error){let value=error||status||'Unknown',kind=error?'error':(/^(SYNCING|PRIMARY|succeeded)$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/failed/i.test(value)?'error':'neutral'),longStatus=!error&&String(value).toUpperCase()==='REPLICATION NOT IN PROGRESS',label=longStatus?'REPLICATION NOT<br>IN PROGRESS':esc(value);return '<span class="badge '+kind+(longStatus?' long-status':'')+'">'+label+'</span>'}
 function statusIcon(status){let symbols={queued:'◷',running:'◌',succeeded:'✓',failed:'✕',interrupted:'!'},value=status||'unknown',kind=/^succeeded$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/^failed$/i.test(value)?'error':'neutral',state=String(value).toLowerCase().replace(/[^a-z0-9_-]/g,'-');return '<span class="status-icon '+kind+' '+state+'" title="'+esc(value)+'" aria-label="'+esc(value)+'">'+(symbols[value]||'?')+'</span>'}
-function stat(label,value,note){return '<div class="stat"><div class="stat-label">'+esc(label)+'</div><div class="stat-value">'+esc(value)+'</div><div class="stat-note">'+esc(note)+'</div></div>'}
+function stat(label,value,note,style='',tooltip=''){return '<div class="stat '+style+'"><div class="stat-label">'+esc(label)+'</div><div class="stat-value"'+(tooltip?' title="'+esc(tooltip)+'" aria-label="'+esc(tooltip)+'"':'')+'>'+esc(value)+'</div><div class="stat-note">'+esc(note)+'</div></div>'}
+function topologyState(mon){return mon.topology||((mon.primary&&Object.keys(mon.clusters||{}).length===2)?'unidirectional':'unavailable')}
+function topologyStat(topology){if(topology==='bidirectional'){let explanation='CCR is active in both directions. FSDR supports only one primary-to-follower direction because switchover and reprotect would otherwise be ambiguous.';return stat('Topology','Bidirectional','CCR direction observed','topology-bidirectional',explanation)}if(topology==='unidirectional')return stat('Topology','Unidirectional','CCR direction observed','topology-unidirectional');return stat('Topology','Unavailable','CCR direction observed')}
 function orderedClusterNames(mon){return Object.keys(mon.clusters||{}).sort((left,right)=>Number(right===mon.primary)-Number(left===mon.primary))}
 function clusterLabel(mon,key){let cluster=mon.clusters?.[key];return cluster?cluster.name+' ('+String(key).toUpperCase()+')':(key?String(key).toUpperCase():'Unavailable')}
 function fsdrTag(replicate){return replicate?'<span class="fsdr-tag protected" title="FSDR replication marker is configured." aria-label="FSDR replication marker is configured">FSDR</span>':'<span class="fsdr-tag missing" title="FSDR replication marker is missing. Replication through FSDR cannot be performed." aria-label="FSDR replication marker is missing. Replication through FSDR cannot be performed.">FSDR</span>'}
@@ -160,11 +166,11 @@ function connectJobsStream(){if(jobsStream)return;jobsStream=new EventSource('/d
 function updateClock(){document.querySelector('#clock').textContent=new Date().toLocaleString()}
 document.querySelectorAll('.top-nav a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{let target=document.querySelector(link.getAttribute('href'));if(!target)return;event.preventDefault();target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'',link.getAttribute('href'));target.classList.remove('nav-target-flash');void target.offsetWidth;target.classList.add('nav-target-flash')}));
 function renderMonitor(mon,includeOverview){
-    let primary=clusterLabel(mon,mon.primary),topology=Object.keys(mon.clusters).length===2?'Topology identified':'Topology unavailable',inventory=mon.inventory_at?new Date(mon.inventory_at*1000).toLocaleString():'No inventory';
+    let primary=clusterLabel(mon,mon.primary),topology=topologyState(mon),inventory=mon.inventory_at?new Date(mon.inventory_at*1000).toLocaleString():'No inventory';
     let docs=mon.clusters?.[mon.primary]?.documents||0;
-    if(includeOverview)document.querySelector('#overview').innerHTML=stat('Observed primary',primary,'Current write target')+stat('FSDR inventory',mon.phase||'Unavailable',inventory)+stat('Topology',topology,'CCR direction observed')+stat('Protected documents',docs,'Unique documents on primary');
+    if(includeOverview)document.querySelector('#overview').innerHTML=stat('Observed primary',primary,'Current write target')+stat('FSDR inventory',mon.phase||'Unavailable',inventory)+topologyStat(topology)+stat('Protected documents',docs,'Unique documents on primary');
     document.querySelector('#comparison').innerHTML=orderedClusterNames(mon).map(k=>cluster(mon.clusters[k],k,mon.phase)).join('');
-    document.querySelector('#topology').textContent=topology;
+    document.querySelector('#topology').textContent=topology==='unavailable'?'Topology unavailable':topology.charAt(0).toUpperCase()+topology.slice(1)+' topology';
 }
 async function refreshMonitor(includeOverview){
   try{
