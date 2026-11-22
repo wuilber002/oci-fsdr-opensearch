@@ -43,8 +43,7 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .summary-card.topology-unidirectional .stat-value{color:#fff;font-weight:750}
 .summary-card.topology-bidirectional{background:#351821;border-color:#7f1d2d}
 .summary-card.topology-bidirectional .stat-value{color:#fff;font-weight:750;cursor:help}
-.topology-card{width:max-content;min-width:0;white-space:nowrap}
-.primary-card,.state-card{width:max-content;min-width:0;white-space:nowrap}
+.primary-card,.topology-card,.state-card{width:200px;min-width:200px;white-space:nowrap}
 .primary-card .stat-value,.state-card .state-value,.topology-card .stat-value{color:#fff;font-size:20px;font-weight:800}
 .primary-card.primary-identified{background:#10291f;border-color:#256342}
 .primary-card.primary-unavailable{background:#351821;border-color:#7f1d2d}
@@ -208,7 +207,7 @@ window.addEventListener('resize',()=>{let target=document.querySelector('#recove
 document.querySelectorAll('.top-nav a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{let target=document.querySelector(link.getAttribute('href'));if(!target)return;event.preventDefault();target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'',link.getAttribute('href'));target.classList.remove('nav-target-flash');void target.offsetWidth;target.classList.add('nav-target-flash')}));
 function renderMonitor(mon,includeOverview,includeComparison){
     let topology=topologyState(mon);
-    if(includeOverview){document.querySelector('#overview').innerHTML=primaryStat(mon)+stateStat(mon)+topologyStat(topology);renderRecoveryPaths(mon.workflow)}
+    if(includeOverview){document.querySelector('#overview').innerHTML=primaryStat(mon)+topologyStat(topology)+stateStat(mon);renderRecoveryPaths(mon.workflow)}
     if(includeComparison){document.querySelector('#comparison').innerHTML=orderedClusterNames(mon).map(k=>cluster(mon.clusters[k],k,mon.phase)).join('');document.querySelector('#topology').textContent=topology==='unavailable'?'Topology unavailable':topology.charAt(0).toUpperCase()+topology.slice(1)+' topology'}
 }
 updateClock();setInterval(updateClock,1000);

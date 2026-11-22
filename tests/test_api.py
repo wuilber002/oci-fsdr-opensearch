@@ -80,6 +80,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("topology-bidirectional", api.DASHBOARD_HTML)
         self.assertIn("primary-identified", api.DASHBOARD_HTML)
         self.assertIn("primary-unavailable", api.DASHBOARD_HTML)
+        self.assertIn(".primary-card,.topology-card,.state-card{width:200px", api.DASHBOARD_HTML)
+        self.assertIn("primaryStat(mon)+topologyStat(topology)+stateStat(mon)", api.DASHBOARD_HTML)
         self.assertIn("function stateLabel", api.DASHBOARD_HTML)
         self.assertIn("function summaryCard", api.DASHBOARD_HTML)
         self.assertIn("summary-card", api.DASHBOARD_HTML)
