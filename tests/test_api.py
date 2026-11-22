@@ -95,6 +95,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn(".recovery-node.status-succeeded{border-color:#4ade80}", api.DASHBOARD_HTML)
         self.assertIn("marker#recovery-arrow-open path{fill:#4ade80", api.DASHBOARD_HTML)
         self.assertIn("V '+postStart.y+'", api.DASHBOARD_HTML)
+        self.assertIn("isOpen(failover,shared[0])", api.DASHBOARD_HTML)
         self.assertIn("ready-pulse", api.DASHBOARD_HTML)
         self.assertIn("path-name", api.DASHBOARD_HTML)
         self.assertIn("state-service-restored{background:#102a45", api.DASHBOARD_HTML)
