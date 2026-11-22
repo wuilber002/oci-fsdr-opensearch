@@ -91,6 +91,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("recovery-connectors", api.DASHBOARD_HTML)
         self.assertIn("recovery-connector-blocked", api.DASHBOARD_HTML)
         self.assertIn("recovery-connector-open", api.DASHBOARD_HTML)
+        self.assertIn("marker#recovery-arrow-open path{fill:#4ade80", api.DASHBOARD_HTML)
+        self.assertIn("V '+postStart.y+'", api.DASHBOARD_HTML)
         self.assertIn("ready-pulse", api.DASHBOARD_HTML)
         self.assertIn("path-name", api.DASHBOARD_HTML)
         self.assertIn("state-service-restored{background:#102a45", api.DASHBOARD_HTML)
