@@ -437,6 +437,44 @@ class ApiTests(unittest.TestCase):
         self.assertIn('"revision": 7', event)
         self.assertIn('"jobs": [{"id": "job"', event)
 
+    def test_dashboard_jobs_stream_does_not_swallow_the_next_job_revision(self):
+        class Manager:
+            def __init__(self):
+                self.revision = 0
+                self.waits = 0
+
+            def job_revision(self):
+                return self.revision
+
+            def recent(self):
+                return [{"id": "job", "status": "running" if self.revision else "queued"}]
+
+            def wait_for_job_change(self, revision, timeout):
+                self.waits += 1
+                if self.waits == 1:
+                    self.revision = 1
+                    return self.revision
+                raise AssertionError("the changed revision must be published before waiting again")
+
+        async def two_events(manager):
+            stream = api.dashboard_jobs_stream(manager, 0)
+            try:
+                return await anext(stream), await anext(stream)
+            finally:
+                await stream.aclose()
+
+        async def direct_call(function, *args):
+            return function(*args)
+
+        manager = Manager()
+        with patch("fsdr_opensearch.api.current_workflow", return_value={"steps": []}), \
+                patch("fsdr_opensearch.api.asyncio.to_thread", new=direct_call):
+            initial, changed = asyncio.run(two_events(manager))
+        self.assertIn('"status": "queued"', initial)
+        self.assertIn("id: 1", changed)
+        self.assertIn('"status": "running"', changed)
+        self.assertEqual(manager.waits, 1)
+
     def test_dashboard_state_stream_announces_current_state_version(self):
         async def first_event(path):
             stream = api.dashboard_state_stream(path)

@@ -601,7 +601,12 @@ async def dashboard_jobs_stream(manager, revision):
             yield "id: {}\nevent: jobs\ndata: {}\n\n".format(
                 revision, json.dumps({"revision": revision, "jobs": manager.recent(),
                                       "workflow": current_workflow(manager)}))
-        revision = await asyncio.to_thread(manager.wait_for_job_change, revision, 15)
+        # ``wait_for_job_change`` returns the revision that woke the waiter.
+        # Do not assign it here: the next iteration must compare that new
+        # value with the last revision actually sent to the browser.  Assigning
+        # it first silently swallowed the event until another dashboard
+        # refresh, leaving History ahead of Recovery paths for several seconds.
+        await asyncio.to_thread(manager.wait_for_job_change, revision, 15)
 
 
 async def dashboard_state_stream(state_file):
