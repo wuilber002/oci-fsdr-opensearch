@@ -40,7 +40,7 @@ h1{font-size:30px;letter-spacing:-.035em;margin:6px 0 7px}
 .stat.topology-bidirectional .stat-value{color:#fff;font-weight:750;cursor:help}
 .topology-card{width:max-content;min-width:0;white-space:nowrap}
 .primary-card,.state-card{width:max-content;min-width:0;white-space:nowrap}
-.primary-card .stat-value,.state-card .state-value{color:#fff;font-weight:800}
+.primary-card .stat-value,.state-card .state-value,.topology-card .stat-value{color:#fff;font-size:20px;font-weight:800}
 .primary-card.primary-identified{background:#10291f;border-color:#256342}
 .primary-card.primary-unavailable{background:#351821;border-color:#7f1d2d}
 .primary-card .stat-note strong{color:#fff;font-weight:800}
