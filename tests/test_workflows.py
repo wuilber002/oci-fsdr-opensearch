@@ -306,6 +306,14 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(Error, "Document count mismatch"):
             validate_post_switchover(self.cfg, self.cs, self.store)
 
+    def test_reprotect_keeps_the_last_inventory_timestamp(self):
+        self.seed()
+        self.switch()
+        inventory_at = self.store.read()["inventory_at"]
+        result = self.protect()
+        self.assertEqual(result["inventory_at"], inventory_at)
+        self.assertEqual(self.store.read()["inventory_at"], inventory_at)
+
     def test_reprotect_starts_and_waits_in_bounded_batches(self):
         self.seed(indices=4)
         self.switch()

@@ -160,6 +160,16 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     cycle_boundary = completed_cycle if completed_cycle and not reset_pending else None
     cycle_events = ([event for event in events if _event_order(event) > _event_order(cycle_boundary)]
                     if cycle_boundary else events)
+    # The recovery-path timer represents the last explicit inventory job, not
+    # a state timestamp touched by another workflow action. This also repairs
+    # dashboards whose historical state was written by older reprotect code.
+    recorded_inventory = _latest(
+        (event for event in events
+         if event.get("command") == "inventory" and event.get("status") == "succeeded"),
+        "inventory")
+    recorded_inventory_at = (recorded_inventory or {}).get("inventory_at")
+    inventory_at = (recorded_inventory_at if isinstance(recorded_inventory_at, (int, float))
+                    else state.get("inventory_at"))
     fresh, fresh_detail = _fresh_inventory(state, now)
     cycle_inventory = _latest(cycle_events, "inventory")
     if cycle_boundary and not (cycle_inventory and cycle_inventory.get("status") == "succeeded"):
@@ -170,7 +180,7 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     failover = _latest(cycle_events, "failover")
     post = _latest(cycle_events, "validate-post-switchover")
     last_success = _last_success(cycle_events)
-    inventory_at = state.get("inventory_at")
+    state_inventory_at = state.get("inventory_at")
     transition_event = max((event for event in (switch, failover) if event and event.get("status") == "succeeded"),
                            key=_event_order, default=None)
     transition_attempt = max((event for event in (switch, failover) if event),
@@ -193,8 +203,8 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     stable_detail = ("FSDR state is {} and accepts this preparation step.".format(phase)
                      if stable else "FSDR state is {}; a stable protected state is required.".format(phase))
     validation_current = bool(validate and validate.get("status") == "succeeded"
-                              and isinstance(inventory_at, (int, float))
-                              and validate.get("inventory_at") == inventory_at)
+                              and isinstance(state_inventory_at, (int, float))
+                              and validate.get("inventory_at") == state_inventory_at)
     validation_detail = ("Validate switchover succeeded for the current inventory."
                          if validation_current else "Validate switchover must succeed for the current inventory.")
     transition_last = bool(transition_event and last_success

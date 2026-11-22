@@ -597,7 +597,10 @@ def reprotect(cfg, cs, store, parallelism=1):
         store.write(state)
     wait_sync(cfg, cs, state["indices"], new, old, "Validating restored protection")
     state["annotation"] = validate_saved_annotation_scope(cs, state, new, old)
-    state.update(phase="PROTECTION_RESTORED", inventory_at=time.time())
+    # Reprotect verifies and rebuilds CCR, but it is not an inventory
+    # collection. Keep inventory_at as the timestamp of the last explicit
+    # inventory so fresh-inventory gates and the dashboard age remain honest.
+    state.update(phase="PROTECTION_RESTORED")
     tr["protection_restored_at"] = time.time()
     tr.update(current_step=None, current_index=None)
     store.write(state)

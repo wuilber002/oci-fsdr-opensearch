@@ -270,6 +270,25 @@ class ApiTests(unittest.TestCase):
             self.assertTrue(step_for(snapshot, "reprotect")["eligible"])
             self.assertEqual(snapshot["selected_path"], "switchover")
 
+    def test_dashboard_inventory_age_uses_the_last_explicit_inventory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            inventory_at = 2_000_000_000
+            inventory_time = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(inventory_at))
+            record_event(state_dir, {
+                "id": "inventory", "request": {"command": "inventory"},
+                "status": "succeeded", "submitted_at": inventory_time,
+                "started_at": inventory_time, "finished_at": inventory_time,
+                "exit_code": 0,
+            }, {"phase": "READY", "inventory_at": inventory_at})
+            # Compatibility case: an older reprotect wrote its completion time
+            # into state.inventory_at. The counter must still show inventory.
+            snapshot = workflow_snapshot(state_dir, {
+                "phase": "PROTECTION_RESTORED", "inventory_at": inventory_at + 600,
+                "indices": [{"name": "orders"}],
+            }, now=inventory_at + 600)
+            self.assertEqual(snapshot["inventory_at"], inventory_at)
+
     def test_completed_step_preserves_its_admission_gates_after_transition(self):
         with tempfile.TemporaryDirectory() as directory:
             state_dir = Path(directory)
