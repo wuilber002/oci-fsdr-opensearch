@@ -112,14 +112,13 @@ def _requirement(key: str, met: bool, detail: str, explanation: str,
     }
 
 
-def _fresh_inventory(state: dict[str, Any], now: float) -> tuple[bool, str]:
-    inventory_at = state.get("inventory_at")
+def _fresh_inventory(inventory_at: Any, now: float) -> tuple[bool, str, float | None]:
     if not isinstance(inventory_at, (int, float)):
-        return False, "No completed inventory is available."
+        return False, "No completed inventory is available.", None
     age = max(0, now - inventory_at)
     if age <= INVENTORY_MAX_AGE_SECONDS:
-        return True, "Inventory is fresh ({:.0f} min of 60 min allowed).".format(age / 60)
-    return False, "Inventory expired ({:.0f} min old; maximum is 60 min).".format(age / 60)
+        return True, "Inventory is fresh ({:.0f} min of 60 min allowed).".format(age / 60), age
+    return False, "Inventory expired ({:.0f} min old; maximum is 60 min).".format(age / 60), age
 
 
 def _current_jobs(jobs: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -170,11 +169,10 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     recorded_inventory_at = (recorded_inventory or {}).get("inventory_at")
     inventory_at = (recorded_inventory_at if isinstance(recorded_inventory_at, (int, float))
                     else state.get("inventory_at"))
-    fresh, fresh_detail = _fresh_inventory(state, now)
-    cycle_inventory = _latest(cycle_events, "inventory")
-    if cycle_boundary and not (cycle_inventory and cycle_inventory.get("status") == "succeeded"):
-        fresh = False
-        fresh_detail = "Start the new recovery cycle with inventory."
+    # A fresh explicit inventory remains usable across a completed recovery
+    # cycle. The next inventory is optional until this one reaches its normal
+    # one-hour expiry; completing reprotect must not manufacture a new gate.
+    fresh, fresh_detail, inventory_age_seconds = _fresh_inventory(inventory_at, now)
     validate = _latest(cycle_events, "validate-switchover")
     switch = _latest(cycle_events, "switchover")
     failover = _latest(cycle_events, "failover")
@@ -362,6 +360,13 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
              for path in RECOVERY_PATHS]
     return {"phase": phase, "inventory_max_age_seconds": INVENTORY_MAX_AGE_SECONDS,
             "inventory_at": inventory_at,
+            "inventory": {
+                "collected_at": inventory_at,
+                "age_seconds": inventory_age_seconds,
+                "max_age_seconds": INVENTORY_MAX_AGE_SECONDS,
+                "fresh": fresh,
+                "detail": fresh_detail,
+            },
             "selected_path": selected_path,
             "paths_resettable": phase in STABLE_PHASES and not reset_pending,
             "cycle_reset_at": completed_cycle.get("finished_at") if completed_cycle else None,

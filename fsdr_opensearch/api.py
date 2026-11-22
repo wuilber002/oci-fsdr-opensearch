@@ -207,6 +207,16 @@ class JobManager:
             "",
             "The controller did not start because required workflow gates are not satisfied.",
         ]
+        inventory = rejection.get("inventory") or {}
+        if inventory:
+            age = inventory.get("age_seconds")
+            maximum = inventory.get("max_age_seconds")
+            if isinstance(age, (int, float)) and isinstance(maximum, (int, float)):
+                lines.extend(("", "Inventory age: {} min ({} min limit; {}).".format(
+                    int(age // 60), int(maximum // 60),
+                    "valid" if inventory.get("fresh") else "expired")))
+            elif inventory.get("detail"):
+                lines.extend(("", "Inventory: {}".format(inventory["detail"])))
         requirements = rejection.get("requirements") or []
         unmet = [item for item in requirements if not item.get("met")]
         if unmet:
@@ -433,6 +443,7 @@ def workflow_gate(request, manager):
         raise HTTPException(status_code=409, detail={
             "code": "workflow_prerequisites_unmet", "command": request.command,
             "status": step.get("status") if step else "blocked",
+            "inventory": snapshot.get("inventory", {}),
             "requirements": step.get("requirements", []) if step else [],
         })
 

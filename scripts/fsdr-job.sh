@@ -79,6 +79,19 @@ if http_status == "409" and detail.get("code") == "workflow_prerequisites_unmet"
     job_id = detail.get("job_id")
     if job_id:
         print("Recorded in dashboard history as rejected job: {}.".format(job_id))
+    inventory = detail.get("inventory") or {}
+    age = inventory.get("age_seconds")
+    maximum = inventory.get("max_age_seconds")
+    if isinstance(age, (int, float)) and isinstance(maximum, (int, float)):
+        def duration(seconds):
+            minutes = max(0, int(seconds) // 60)
+            hours, minutes = divmod(minutes, 60)
+            return (f"{hours}h {minutes}m" if hours else f"{minutes}m")
+        print("Inventory age: {} (limit {}; {}).".format(
+            duration(age), duration(maximum),
+            "valid" if inventory.get("fresh") else "expired"))
+    elif inventory.get("detail"):
+        print("Inventory: {}".format(inventory["detail"]))
     unmet = [item for item in detail.get("requirements", []) if not item.get("met")]
     if unmet:
         print("Unmet requirements:")

@@ -201,7 +201,7 @@ class ApiTests(unittest.TestCase):
             snapshot = workflow_snapshot(state_dir, state, now=now)
             self.assertEqual(snapshot["cycle_reset_at"], "2026-01-01T00:00:05Z")
             self.assertEqual(step_for(snapshot, "inventory")["status"], "ready")
-            self.assertEqual(step_for(snapshot, "validate-switchover")["status"], "waiting")
+            self.assertEqual(step_for(snapshot, "validate-switchover")["status"], "ready")
             self.assertEqual(step_for(snapshot, "switchover")["status"], "waiting")
             self.assertIsNone(snapshot["selected_path"])
             self.assertFalse(any(path["unavailable"] for path in snapshot["paths"]))
@@ -269,6 +269,28 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(step_for(snapshot, "reprotect")["status"], "ready")
             self.assertTrue(step_for(snapshot, "reprotect")["eligible"])
             self.assertEqual(snapshot["selected_path"], "switchover")
+
+    def test_fresh_inventory_remains_usable_after_a_completed_cycle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            now = 2_000_000_000
+            state = {"phase": "PROTECTION_RESTORED", "inventory_at": now - 30 * 60,
+                     "indices": [{"name": "orders"}]}
+            for sequence, command in enumerate((
+                    "inventory", "validate-switchover", "switchover",
+                    "validate-post-switchover", "reprotect"), start=1):
+                timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 60 + sequence))
+                record_event(state_dir, {
+                    "id": "{}-{}".format(command, sequence),
+                    "request": {"command": command}, "status": "succeeded",
+                    "submitted_at": timestamp, "started_at": timestamp,
+                    "finished_at": timestamp, "exit_code": 0,
+                }, state)
+            snapshot = workflow_snapshot(state_dir, state, now=now)
+            validation = step_for(snapshot, "validate-switchover")
+            self.assertTrue(validation["eligible"])
+            self.assertTrue(snapshot["inventory"]["fresh"])
+            self.assertEqual(snapshot["inventory"]["age_seconds"], 30 * 60)
 
     def test_dashboard_inventory_age_uses_the_last_explicit_inventory(self):
         with tempfile.TemporaryDirectory() as directory:
