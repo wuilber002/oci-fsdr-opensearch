@@ -73,7 +73,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn('id="log-job-status"', api.DASHBOARD_HTML)
         self.assertIn("function jobTime", api.DASHBOARD_HTML)
         self.assertIn("date.toLocaleString()", api.DASHBOARD_HTML)
-        self.assertIn("height:630px", api.DASHBOARD_HTML)
+        self.assertIn("height:680px", api.DASHBOARD_HTML)
         self.assertIn("HISTORY_PAGE_SIZE=10", api.DASHBOARD_HTML)
         self.assertIn("INDEX_PAGE_SIZE=10", api.DASHBOARD_HTML)
         self.assertIn("function changeIndexPage", api.DASHBOARD_HTML)

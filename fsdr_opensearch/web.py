@@ -115,7 +115,7 @@ tr:last-child td{border-bottom:0}
 @keyframes status-spinner{to{transform:rotate(360deg)}}@keyframes ready-pulse{50%{opacity:.35;text-shadow:0 0 7px rgba(74,222,128,.9)}}
 .status-cell{width:1%;padding-right:5px;text-align:center}
 .controller-job{margin-bottom:22px}
-.job-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(420px,.85fr);align-items:stretch;height:630px}
+.job-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(420px,.85fr);align-items:stretch;height:680px}
 .job-panel{display:flex;flex-direction:column;min-width:0;min-height:0}
 .job-panel+.job-panel{border-left:1px solid var(--line)}
 .job-panel>.table-wrap,.job-panel>.console{flex:1;min-height:0}
