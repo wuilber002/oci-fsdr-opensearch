@@ -69,7 +69,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events", api.DASHBOARD_HTML)
         self.assertIn("connectDashboardStream", api.DASHBOARD_HTML)
         self.assertIn("event=>{try{applyDashboard(JSON.parse(event.data))}", api.DASHBOARD_HTML)
-        self.assertNotIn("/dashboard/v1/jobs/events", api.DASHBOARD_HTML)
+        self.assertIn("/dashboard/v1/jobs/events", api.DASHBOARD_HTML)
+        self.assertIn("connectJobStream", api.DASHBOARD_HTML)
         self.assertNotIn("/dashboard/v1/state/events", api.DASHBOARD_HTML)
         self.assertNotIn("refreshComparison", api.DASHBOARD_HTML)
         self.assertNotIn("fetch(", api.DASHBOARD_HTML)
@@ -314,6 +315,9 @@ class ApiTests(unittest.TestCase):
             def job_revision(self):
                 return 7
 
+            def recent(self):
+                return [{"id": "job", "status": "queued"}]
+
             def wait_for_job_change(self, revision, timeout):
                 return revision
 
@@ -328,6 +332,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("id: 7", event)
         self.assertIn("event: jobs", event)
         self.assertIn('"revision": 7', event)
+        self.assertIn('"jobs": [{"id": "job"', event)
 
     def test_dashboard_state_stream_announces_current_state_version(self):
         async def first_event(path):

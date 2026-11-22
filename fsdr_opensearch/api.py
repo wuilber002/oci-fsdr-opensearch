@@ -531,10 +531,10 @@ def dashboard_snapshot_payload(manager=None):
 async def dashboard_events_stream(manager, refresh_seconds=5.0):
     """Push complete dashboard snapshots without browser polling.
 
-    FSDR state and job lifecycle changes are detected immediately from their
-    durable local records.  A bounded periodic observation refreshes remote
-    OpenSearch counters and CCR status; the shared monitor cache prevents one
-    observer request per browser connection.
+    FSDR state changes are detected from durable local records. A bounded
+    periodic observation refreshes remote OpenSearch counters and CCR status;
+    job lifecycle updates use their dedicated local SSE feed so they never
+    wait for an OpenSearch observation.
     """
     revision = 0
     signature = object()
@@ -544,7 +544,7 @@ async def dashboard_events_stream(manager, refresh_seconds=5.0):
         configured = _read_json(CONFIG, {})
         state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
         current = (str(CONFIG), _file_version(CONFIG), _file_version(state_dir / "state.json"),
-                   _file_version(state_dir / "workflow.json"), manager.job_revision())
+                   _file_version(state_dir / "workflow.json"))
         now = time.monotonic()
         if current != signature or now >= next_observation:
             payload = await asyncio.to_thread(dashboard_snapshot_payload, manager)
@@ -567,8 +567,12 @@ async def dashboard_jobs_stream(manager, revision):
         if not sent_initial or current != revision:
             revision = current
             sent_initial = True
+            # Do not call monitor_snapshot here. This feed must be able to
+            # render a newly submitted or rejected job even if either remote
+            # OpenSearch endpoint is slow or temporarily unavailable.
             yield "id: {}\nevent: jobs\ndata: {}\n\n".format(
-                revision, json.dumps({"revision": revision}))
+                revision, json.dumps({"revision": revision, "jobs": manager.recent(),
+                                      "workflow": current_workflow(manager)}))
         revision = await asyncio.to_thread(manager.wait_for_job_change, revision, 15)
 
 
@@ -696,8 +700,7 @@ def monitor_snapshot():
     state_file = state_dir / "state.json"
     manager = getattr(app.state, "manager", None)
     signature = (str(CONFIG), _file_version(CONFIG), _file_version(state_file),
-                 _file_version(state_dir / "workflow.json"),
-                 manager.job_revision() if manager else None)
+                 _file_version(state_dir / "workflow.json"))
     try:
         lifetime = max(1, float(os.environ.get("FSDR_MONITOR_SNAPSHOT_CACHE_SECONDS", "10")))
     except ValueError:

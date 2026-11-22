@@ -164,7 +164,7 @@ tr:last-child td{border-bottom:0}
   <footer class="footer"><span>Read-only dashboard · command submission requires API authentication</span></footer>
 </main>
 <script>
-let selected='',historyPage=0,historyRows=[],latestJob=null,outputStream=null,dashboardStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=11;
+let selected='',historyPage=0,historyRows=[],latestJob=null,outputStream=null,dashboardStream=null,jobStream=null,streamingJob='',loadedOutput='';const HISTORY_PAGE_SIZE=11;
 const esc=s=>String(s??'—').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function badge(status,error){let value=error||status||'Unknown',kind=error?'error':(/^(SYNCING|PRIMARY|succeeded)$/i.test(value)?'ok':/^(queued|running|interrupted)$/i.test(value)?'warn':/failed/i.test(value)?'error':'neutral'),longStatus=!error&&String(value).toUpperCase()==='REPLICATION NOT IN PROGRESS',label=longStatus?'REPLICATION NOT<br>IN PROGRESS':esc(value);return '<span class="badge '+kind+(longStatus?' long-status':'')+'">'+label+'</span>'}
 function rejectionReason(job){let rejected=job?.rejection||{},unmet=(rejected.requirements||[]).filter(item=>!item.met),details=unmet.map(item=>item.detail||item.explanation).filter(Boolean);return details.length?details.join(' · '):(job?.reason||rejected.code||'Workflow prerequisites are not satisfied.')}
@@ -205,6 +205,7 @@ function output(id){if(!id||streamingJob===id||loadedOutput===id)return;if(outpu
 function applyJobs(jobs){latestJob=jobs.jobs[0]||null;let active=jobs.jobs.find(j=>j.status==='running')||jobs.jobs.find(j=>j.status==='queued')||jobs.jobs[0];if(!selected&&active)selected=active.id;if(active&&['running','queued'].includes(active.status))selected=active.id;activeInfo(active);historyRows=jobs.jobs;document.querySelector('#job-count').textContent=historyRows.length+' recent job(s)';renderHistory();if(selected)output(selected)}
 function applyDashboard(snapshot){if(!snapshot||!snapshot.monitor||!snapshot.jobs)return;latestJob=null;applyJobs(snapshot.jobs);renderMonitor(snapshot.monitor,true,true);document.querySelector('#notice').hidden=true}
 function connectDashboardStream(){if(dashboardStream)return;dashboardStream=new EventSource('/dashboard/v1/events');dashboardStream.addEventListener('snapshot',event=>{try{applyDashboard(JSON.parse(event.data))}catch(error){let notice=document.querySelector('#notice');notice.textContent='Dashboard stream payload is invalid.';notice.hidden=false}});dashboardStream.addEventListener('error',()=>{let notice=document.querySelector('#notice');notice.textContent='Dashboard connection lost; reconnecting…';notice.hidden=false})}
+function connectJobStream(){if(jobStream)return;jobStream=new EventSource('/dashboard/v1/jobs/events');jobStream.addEventListener('jobs',event=>{try{let update=JSON.parse(event.data);if(!Array.isArray(update.jobs))throw new Error('missing jobs');applyJobs({jobs:update.jobs});if(update.workflow){renderRecoveryPaths(update.workflow);renderWorkflow(update.workflow)}}catch(error){console.warn('Dashboard job stream payload is invalid.',error)}});jobStream.addEventListener('error',()=>console.warn('Dashboard job stream disconnected; browser will reconnect.'))}
 function updateClock(){document.querySelector('#clock').textContent=new Date().toLocaleString()}
 window.addEventListener('resize',()=>{let target=document.querySelector('#recovery-flow');if(target)drawRecoveryConnectors(target)})
 document.querySelectorAll('.top-nav a[href^="#"]').forEach(link=>link.addEventListener('click',event=>{let target=document.querySelector(link.getAttribute('href'));if(!target)return;event.preventDefault();target.scrollIntoView({behavior:'smooth',block:'start'});history.replaceState(null,'',link.getAttribute('href'));target.classList.remove('nav-target-flash');void target.offsetWidth;target.classList.add('nav-target-flash')}));
@@ -215,5 +216,6 @@ function renderMonitor(mon,includeOverview,includeComparison){
 }
 updateClock();setInterval(updateClock,1000);
 connectDashboardStream();
+connectJobStream();
 </script>
 </body></html>'''
