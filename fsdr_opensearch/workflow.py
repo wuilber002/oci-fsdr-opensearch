@@ -96,8 +96,13 @@ def _last_success(events: Iterable[dict[str, Any]]) -> dict[str, Any] | None:
     return max(matched, key=_event_order, default=None)
 
 
-def _requirement(key: str, met: bool, detail: str, blocked: bool = False) -> dict[str, Any]:
-    return {"key": key, "met": met, "detail": detail, "level": "blocked" if blocked and not met else "waiting"}
+def _requirement(key: str, met: bool, detail: str, explanation: str,
+                 blocked: bool = False) -> dict[str, Any]:
+    """Build a UI/API gate with a short condition and operational rationale."""
+    return {
+        "key": key, "met": met, "detail": detail, "explanation": explanation,
+        "level": "blocked" if blocked and not met else "waiting",
+    }
 
 
 def _fresh_inventory(state: dict[str, Any], now: float) -> tuple[bool, str]:
@@ -177,31 +182,52 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
 
     rules = {
         "inventory": [
-            _requirement("stable-state", stable, stable_detail, blocked=not stable),
+            _requirement("stable-state", stable, stable_detail,
+                "Preparation is allowed only from a stable FSDR state, preventing a second operation from overlapping an unfinished transition.",
+                blocked=not stable),
         ],
         "validate-switchover": [
-            _requirement("fresh-inventory", fresh, fresh_detail),
-            _requirement("stable-state", stable, stable_detail, blocked=not stable),
+            _requirement("fresh-inventory", fresh, fresh_detail,
+                "A fresh inventory fixes the current protected-index scope, cluster roles, UUIDs and CCR direction used by the next operation."),
+            _requirement("stable-state", stable, stable_detail,
+                "Preparation is allowed only from a stable FSDR state, preventing a second operation from overlapping an unfinished transition.",
+                blocked=not stable),
         ],
         "switchover": [
-            _requirement("fresh-inventory", fresh, fresh_detail),
-            _requirement("validate-switchover", validation_current, validation_detail),
-            _requirement("stable-state", stable, stable_detail, blocked=not stable),
+            _requirement("fresh-inventory", fresh, fresh_detail,
+                "A fresh inventory fixes the current protected-index scope, cluster roles, UUIDs and CCR direction used by the next operation."),
+            _requirement("validate-switchover", validation_current, validation_detail,
+                "The pre-validation checks health, roles, aliases, CCR and readiness against this exact inventory before writes are moved."),
+            _requirement("stable-state", stable, stable_detail,
+                "Preparation is allowed only from a stable FSDR state, preventing a second operation from overlapping an unfinished transition.",
+                blocked=not stable),
         ],
         "failover": [
-            _requirement("stable-state", stable, stable_detail, blocked=not stable),
-            _requirement("persisted-inventory", saved_inventory, saved_inventory_detail),
-            _requirement("source-fenced", source_fenced, source_fenced_detail),
-            _requirement("data-loss-accepted", data_loss_accepted, data_loss_detail),
-            _requirement("stale-follower-annotations", stale_annotation_ok, stale_annotation_detail),
+            _requirement("stable-state", stable, stable_detail,
+                "Preparation is allowed only from a stable FSDR state, preventing a second operation from overlapping an unfinished transition.",
+                blocked=not stable),
+            _requirement("persisted-inventory", saved_inventory, saved_inventory_detail,
+                "When the original primary is unavailable, FSDR needs the saved inventory to identify the protected indices and their follower mappings."),
+            _requirement("source-fenced", source_fenced, source_fenced_detail,
+                "This operator attestation confirms the former primary cannot accept writes, preventing split-brain during an emergency promotion."),
+            _requirement("data-loss-accepted", data_loss_accepted, data_loss_detail,
+                "Failover can promote only operations already replicated to the follower; this attestation explicitly accepts any unreplicated writes."),
+            _requirement("stale-follower-annotations", stale_annotation_ok, stale_annotation_detail,
+                "With stale inventory, FSDR verifies follower annotations before promotion so the saved scope is not used blindly."),
         ],
         "validate-post-switchover": [
-            _requirement("service-restored", service_restored, service_detail, blocked=not service_restored),
-            _requirement("transition-last", transition_last, transition_detail),
+            _requirement("service-restored", service_restored, service_detail,
+                "Post-transition work starts only after the promoted cluster is writable and the reverse CCR remains intentionally stopped.",
+                blocked=not service_restored),
+            _requirement("transition-last", transition_last, transition_detail,
+                "Validation must run immediately after the switchover or failover, before a later workflow action changes the recovery evidence."),
         ],
         "reprotect": [
-            _requirement("service-restored", service_restored, service_detail, blocked=not service_restored),
-            _requirement("post-validation", post_after_transition, post_detail),
+            _requirement("service-restored", service_restored, service_detail,
+                "Post-transition work starts only after the promoted cluster is writable and the reverse CCR remains intentionally stopped.",
+                blocked=not service_restored),
+            _requirement("post-validation", post_after_transition, post_detail,
+                "Reverse protection recreates the former primary as a follower, so it is allowed only after post-transition checks completed successfully."),
         ],
     }
     steps = []
@@ -212,12 +238,15 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
         eligible = all(item["met"] for item in requirements) and not controller_busy
         if controller_busy and not active:
             requirements.insert(0, _requirement("controller-idle", False,
-                "Another FSDR workflow step is queued or running."))
+                "Another FSDR workflow step is queued or running.",
+                "FSDR serializes disruptive actions so two jobs cannot modify roles, write blocks or CCR configuration at the same time."))
         elif active:
             requirements.insert(0, _requirement("controller-idle", True,
-                "This workflow step is currently {}.".format(active.get("status"))))
+                "This workflow step is currently {}.".format(active.get("status")),
+                "The controller owns this operation and will publish its terminal outcome before another workflow action is accepted."))
         else:
-            requirements.insert(0, _requirement("controller-idle", True, "No workflow step is running."))
+            requirements.insert(0, _requirement("controller-idle", True, "No workflow step is running.",
+                "The controller is free to start the next eligible workflow action."))
         if active:
             status, detail = ("running" if active.get("status") == "running" else "queued",
                               "This step is currently {}.".format(active.get("status")))
@@ -232,9 +261,12 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
             status, detail = "blocked", "A required controller state is incompatible with this step."
         else:
             status, detail = "waiting", "Waiting for prerequisites."
+        attempt = active or latest or {}
+        last_attempt_at = (attempt.get("finished_at") or attempt.get("started_at")
+                           or attempt.get("submitted_at"))
         steps.append({"command": command, "label": label, "status": status, "status_detail": detail,
                       "eligible": eligible, "requirements": requirements,
-                      "last_event": latest})
+                      "last_event": latest, "last_attempt_at": last_attempt_at})
     by_command = {step["command"]: step for step in steps}
     paths = [{**path, "steps": [by_command[command] for command in path["steps"]]}
              for path in RECOVERY_PATHS]

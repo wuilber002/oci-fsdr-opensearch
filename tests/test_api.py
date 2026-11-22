@@ -78,6 +78,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn("Planned switchover workflow", api.DASHBOARD_HTML)
         self.assertIn("Recovery paths", api.DASHBOARD_HTML)
         self.assertIn("renderRecoveryPaths", api.DASHBOARD_HTML)
+        self.assertIn("workflowAttemptTime", api.DASHBOARD_HTML)
+        self.assertIn("--:--:-- --/--/----", api.DASHBOARD_HTML)
+        self.assertIn("requirementTooltip", api.DASHBOARD_HTML)
         self.assertIn("workflowCard", api.DASHBOARD_HTML)
         self.assertNotIn("Protected documents", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
@@ -102,7 +105,10 @@ class ApiTests(unittest.TestCase):
             event("inventory", "READY")
             event("validate-switchover", "READY")
             prepared = workflow_snapshot(state_dir, state, now=now)
-            self.assertTrue(step_for(prepared, "switchover")["eligible"])
+            switchover_step = step_for(prepared, "switchover")
+            self.assertTrue(switchover_step["eligible"])
+            self.assertTrue(all(item.get("explanation") for item in switchover_step["requirements"]))
+            self.assertEqual(step_for(prepared, "inventory")["last_attempt_at"], "2026-01-01T00:00:02Z")
 
             state["phase"] = "SERVICE_RESTORED"
             event("switchover", "SERVICE_RESTORED")
