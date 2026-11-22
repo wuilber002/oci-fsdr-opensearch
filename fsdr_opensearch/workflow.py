@@ -313,8 +313,13 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
         elif latest and latest.get("status") == "succeeded":
             if command == "inventory" and not switchover_started and not fresh:
                 status, detail = "ready", "The latest inventory expired; run inventory again before switchover."
-            elif command == "validate-switchover" and not switchover_started and not fresh:
-                status, detail = "waiting", "The validated inventory expired; run inventory and validate again."
+            elif command == "validate-switchover" and not switchover_started:
+                if not fresh:
+                    status, detail = "waiting", "The validated inventory expired; run inventory and validate again."
+                elif not validation_current:
+                    status, detail = "ready", "A newer inventory was collected; validate switchover again for that inventory."
+                else:
+                    status, detail = "succeeded", "The latest execution completed successfully."
             else:
                 status, detail = "succeeded", "The latest execution completed successfully."
         elif eligible:

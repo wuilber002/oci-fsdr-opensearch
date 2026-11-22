@@ -271,6 +271,35 @@ class ApiTests(unittest.TestCase):
             self.assertTrue(step_for(snapshot, "reprotect")["eligible"])
             self.assertEqual(snapshot["selected_path"], "switchover")
 
+    def test_new_inventory_invalidates_a_previous_switchover_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            initial_inventory = 2_000_000_000
+            refreshed_inventory = initial_inventory + 20 * 60
+            state = {"phase": "PROTECTION_RESTORED", "inventory_at": refreshed_inventory,
+                     "indices": [{"name": "orders"}]}
+
+            def event(command, timestamp, inventory_at):
+                value = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(timestamp))
+                record_event(state_dir, {
+                    "id": "{}-{}".format(command, timestamp),
+                    "request": {"command": command}, "status": "succeeded",
+                    "submitted_at": value, "started_at": value,
+                    "finished_at": value, "exit_code": 0,
+                }, {"phase": "PROTECTION_RESTORED", "inventory_at": inventory_at})
+
+            event("inventory", initial_inventory, initial_inventory)
+            event("validate-switchover", initial_inventory + 1, initial_inventory)
+            event("inventory", refreshed_inventory, refreshed_inventory)
+
+            snapshot = workflow_snapshot(state_dir, state, now=refreshed_inventory + 60)
+            validation = step_for(snapshot, "validate-switchover")
+            self.assertEqual(step_for(snapshot, "inventory")["status"], "succeeded")
+            self.assertEqual(validation["status"], "ready")
+            self.assertTrue(validation["eligible"])
+            self.assertIn("newer inventory", validation["status_detail"])
+            self.assertFalse(step_for(snapshot, "switchover")["eligible"])
+
     def test_fresh_inventory_remains_usable_after_a_completed_cycle(self):
         with tempfile.TemporaryDirectory() as directory:
             state_dir = Path(directory)
