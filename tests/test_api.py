@@ -78,6 +78,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("INDEX_PAGE_SIZE=10", api.DASHBOARD_HTML)
         self.assertIn("function changeIndexPage", api.DASHBOARD_HTML)
         self.assertIn("index-pagination", api.DASHBOARD_HTML)
+        self.assertIn("#comparison .card{display:flex;flex-direction:column;min-height:590px}", api.DASHBOARD_HTML)
+        self.assertIn(".history-table tr{height:50px}", api.DASHBOARD_HTML)
         self.assertIn("history-pagination", api.DASHBOARD_HTML)
         self.assertIn("EventSource", api.DASHBOARD_HTML)
         self.assertIn("/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events", api.DASHBOARD_HTML)

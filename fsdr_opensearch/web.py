@@ -84,6 +84,8 @@ tr:last-child td{border-bottom:0}
 .fsdr-tag.protected{background:#153b2c;color:#86efac}
 .fsdr-tag.missing{background:#7f1d2d;color:#fecdd3;text-decoration:line-through;text-decoration-thickness:1px}
 #comparison th,#comparison td,#comparison .number{text-align:center}
+#comparison .card{display:flex;flex-direction:column;min-height:590px}
+#comparison .card>.table-wrap{flex:1}
 #comparison th{color:#fff;font-weight:800}
 #comparison thead tr{height:51px}
 #comparison th{height:51px;padding-top:0;padding-bottom:0;vertical-align:middle}
@@ -119,7 +121,7 @@ tr:last-child td{border-bottom:0}
 .job-panel>.table-wrap,.job-panel>.console{flex:1;min-height:0}
 .console{margin:0;min-height:360px;overflow:auto;padding:18px;background:#090f19;color:#b4f4c7;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap}
 .history-table{width:max-content;min-width:100%}
-.history-table th,.history-table td{padding-top:8px;padding-bottom:8px}
+.history-table tr{height:50px}.history-table th,.history-table td{height:50px;box-sizing:border-box;padding-top:0;padding-bottom:0;vertical-align:middle}
 .history-table .command{width:132px;white-space:normal;line-height:1.2}
 .history-table .job{cursor:pointer}.history-table .job:hover td{background:#192943}.history-table .job.selected td{background:#27466f;color:#f0f7ff}
 .log-heading{display:flex;align-items:center;gap:9px;min-width:0}.log-job-status{display:inline-flex;align-items:center;gap:6px;min-width:0;color:var(--muted);font-size:12px;font-weight:600;white-space:nowrap}.log-job-status .status-icon{flex:0 0 auto}.log-job-id{overflow:hidden;text-overflow:ellipsis}
