@@ -348,11 +348,14 @@ def favicon():
 
 def workflow_gate(request, manager):
     """Reject out-of-order API workflow submissions before a child starts."""
-    if request.command not in WORKFLOW_COMMANDS:
+    if request.command not in WORKFLOW_COMMANDS or request.resume:
+        # Resume follows the controller's durable transition record rather than
+        # a new planned-workflow path. The CLI validates compatibility.
         return
     configured = _read_json(CONFIG, {})
     state_dir = Path(request.state_dir or configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
-    snapshot = workflow_snapshot(state_dir, _read_json(state_dir / "state.json", {}), manager.recent())
+    snapshot = workflow_snapshot(state_dir, _read_json(state_dir / "state.json", {}), manager.recent(),
+                                 candidate=dump_model(request))
     step = step_for(snapshot, request.command)
     if not step or not step["eligible"]:
         raise HTTPException(status_code=409, detail={

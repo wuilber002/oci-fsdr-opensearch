@@ -75,7 +75,9 @@ class ApiTests(unittest.TestCase):
         self.assertIn("function stateLabel", api.DASHBOARD_HTML)
         self.assertIn("function summaryCard", api.DASHBOARD_HTML)
         self.assertIn("summary-card", api.DASHBOARD_HTML)
-        self.assertIn("FSDR workflow", api.DASHBOARD_HTML)
+        self.assertIn("Planned switchover workflow", api.DASHBOARD_HTML)
+        self.assertIn("Recovery paths", api.DASHBOARD_HTML)
+        self.assertIn("renderRecoveryPaths", api.DASHBOARD_HTML)
         self.assertIn("workflowCard", api.DASHBOARD_HTML)
         self.assertNotIn("Protected documents", api.DASHBOARD_HTML)
         self.assertNotIn('id="active-job-info"', api.DASHBOARD_HTML)
@@ -105,6 +107,7 @@ class ApiTests(unittest.TestCase):
             state["phase"] = "SERVICE_RESTORED"
             event("switchover", "SERVICE_RESTORED")
             switched = workflow_snapshot(state_dir, state, now=now)
+            self.assertEqual(step_for(switched, "switchover")["status"], "succeeded")
             self.assertTrue(step_for(switched, "validate-post-switchover")["eligible"])
             self.assertFalse(step_for(switched, "reprotect")["eligible"])
 
@@ -133,6 +136,29 @@ class ApiTests(unittest.TestCase):
                 api.workflow_gate(api.OperationRequest(command="inventory"), Manager())
         finally:
             api.CONFIG = original
+
+    def test_workflow_gate_leaves_explicit_resume_to_the_controller(self):
+        class Manager:
+            def recent(self):
+                return []
+
+        api.workflow_gate(api.OperationRequest(command="switchover", resume=True), Manager())
+
+    def test_failover_requires_explicit_risk_attestations_but_not_fresh_inventory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            state = {"phase": "READY", "inventory_at": time.time() - 7200,
+                     "indices": [{"a": "orders", "b": "orders"}]}
+            blocked = workflow_snapshot(state_dir, state, candidate={})
+            self.assertFalse(step_for(blocked, "failover")["eligible"])
+            accepted = workflow_snapshot(state_dir, state, candidate={
+                "source_fenced": True, "accept_data_loss": True,
+                "use_follower_annotations": True,
+            })
+            self.assertTrue(step_for(accepted, "failover")["eligible"])
+            self.assertIn("failover", [step["command"] for step in accepted["steps"]])
+            self.assertEqual([path["id"] for path in accepted["paths"]],
+                             ["switchover", "failover", "shared"])
 
     def test_workflow_expired_inventory_blocks_validation(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -22,7 +22,16 @@ WORKFLOW_STEPS = (
     ("validate-post-switchover", "Validate post-switchover"),
     ("reprotect", "Reprotect"),
 )
-WORKFLOW_COMMANDS = {command for command, _ in WORKFLOW_STEPS}
+FAILOVER_STEP = ("failover", "Failover")
+ALL_WORKFLOW_STEPS = WORKFLOW_STEPS[:3] + (FAILOVER_STEP,) + WORKFLOW_STEPS[3:]
+WORKFLOW_COMMANDS = {command for command, _ in ALL_WORKFLOW_STEPS}
+RECOVERY_PATHS = (
+    {"id": "switchover", "label": "Planned switchover",
+     "steps": ("inventory", "validate-switchover", "switchover")},
+    {"id": "failover", "label": "Emergency failover", "steps": ("failover",)},
+    {"id": "shared", "label": "Shared recovery",
+     "steps": ("validate-post-switchover", "reprotect")},
+)
 STABLE_PHASES = {"READY", "PROTECTION_RESTORED"}
 INVENTORY_MAX_AGE_SECONDS = 60 * 60
 LEDGER_FILE = "workflow.json"
@@ -111,9 +120,10 @@ def _current_jobs(jobs: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
 
 def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Iterable[dict[str, Any]] = (),
-                      now: float | None = None) -> dict[str, Any]:
+                      now: float | None = None, candidate: dict[str, Any] | None = None) -> dict[str, Any]:
     """Return UI/API-ready workflow gates using only durable local records."""
     state = state or {}
+    candidate = candidate or {}
     now = time.time() if now is None else now
     events = read_ledger(state_dir)["events"]
     jobs = list(jobs)
@@ -124,9 +134,12 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     fresh, fresh_detail = _fresh_inventory(state, now)
     validate = _latest(events, "validate-switchover")
     switch = _latest(events, "switchover")
+    failover = _latest(events, "failover")
     post = _latest(events, "validate-post-switchover")
     last_success = _last_success(events)
     inventory_at = state.get("inventory_at")
+    transition_event = max((event for event in (switch, failover) if event and event.get("status") == "succeeded"),
+                           key=_event_order, default=None)
 
     stable = phase in STABLE_PHASES
     stable_detail = ("FSDR state is {} and accepts this preparation step.".format(phase)
@@ -136,14 +149,28 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
                               and validate.get("inventory_at") == inventory_at)
     validation_detail = ("Validate switchover succeeded for the current inventory."
                          if validation_current else "Validate switchover must succeed for the current inventory.")
-    switched_last = bool(switch and switch.get("status") == "succeeded"
-                         and last_success and last_success.get("job_id") == switch.get("job_id"))
-    switch_detail = ("The latest successful workflow step is switchover."
-                     if switched_last else "Switchover must be the latest successful workflow step.")
-    post_after_switch = bool(post and post.get("status") == "succeeded" and switch
-                              and (_epoch(post.get("finished_at")) or 0) >= (_epoch(switch.get("finished_at")) or 0))
-    post_detail = ("Post-switchover validation succeeded after switchover."
-                   if post_after_switch else "Validate post-switchover must succeed after switchover.")
+    transition_last = bool(transition_event and last_success
+                           and last_success.get("job_id") == transition_event.get("job_id"))
+    transition_name = transition_event.get("command") if transition_event else "a transition"
+    transition_detail = ("The latest successful workflow step is {}.".format(transition_name)
+                         if transition_last else "Switchover or failover must be the latest successful workflow step.")
+    post_after_transition = bool(post and post.get("status") == "succeeded" and transition_event
+                                 and (_event_order(post) >= _event_order(transition_event)))
+    post_detail = ("Post-transition validation succeeded after {}.".format(transition_name)
+                   if post_after_transition else "Validate post-switchover must succeed after switchover or failover.")
+    saved_inventory = bool(state.get("indices"))
+    saved_inventory_detail = ("A persisted inventory defines the protected index scope."
+                              if saved_inventory else "Failover requires a previously persisted inventory.")
+    source_fenced = candidate.get("source_fenced") is True
+    source_fenced_detail = ("Source fencing was explicitly attested." if source_fenced
+                            else "Failover requires source_fenced=true in the API request.")
+    data_loss_accepted = candidate.get("accept_data_loss") is True
+    data_loss_detail = ("Potential data loss was explicitly accepted." if data_loss_accepted
+                        else "Failover requires accept_data_loss=true in the API request.")
+    stale_annotation_ok = fresh or candidate.get("use_follower_annotations") is True
+    stale_annotation_detail = ("Inventory is fresh; no stale-inventory follower attestation is needed."
+                               if fresh else ("Follower annotations will be verified for stale inventory."
+                                              if stale_annotation_ok else "Stale inventory requires use_follower_annotations=true."))
     service_restored = phase == "SERVICE_RESTORED"
     service_detail = ("FSDR state is SERVICE_RESTORED." if service_restored
                       else "FSDR state is {}; SERVICE_RESTORED is required.".format(phase))
@@ -161,17 +188,24 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
             _requirement("validate-switchover", validation_current, validation_detail),
             _requirement("stable-state", stable, stable_detail, blocked=not stable),
         ],
+        "failover": [
+            _requirement("stable-state", stable, stable_detail, blocked=not stable),
+            _requirement("persisted-inventory", saved_inventory, saved_inventory_detail),
+            _requirement("source-fenced", source_fenced, source_fenced_detail),
+            _requirement("data-loss-accepted", data_loss_accepted, data_loss_detail),
+            _requirement("stale-follower-annotations", stale_annotation_ok, stale_annotation_detail),
+        ],
         "validate-post-switchover": [
             _requirement("service-restored", service_restored, service_detail, blocked=not service_restored),
-            _requirement("switchover-last", switched_last, switch_detail),
+            _requirement("transition-last", transition_last, transition_detail),
         ],
         "reprotect": [
             _requirement("service-restored", service_restored, service_detail, blocked=not service_restored),
-            _requirement("post-validation", post_after_switch, post_detail),
+            _requirement("post-validation", post_after_transition, post_detail),
         ],
     }
     steps = []
-    for command, label in WORKFLOW_STEPS:
+    for command, label in ALL_WORKFLOW_STEPS:
         requirements = list(rules[command])
         active = current.get(command)
         latest = _latest(events, command)
@@ -190,6 +224,8 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
         elif latest and latest.get("status") in {"failed", "interrupted"}:
             status = latest["status"]
             detail = latest.get("reason") or "The latest execution did not complete successfully."
+        elif latest and latest.get("status") == "succeeded":
+            status, detail = "succeeded", "The latest execution completed successfully."
         elif eligible:
             status, detail = "ready", "All prerequisites are met; this step can be submitted."
         elif any(item["level"] == "blocked" for item in requirements if not item["met"]):
@@ -199,8 +235,12 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
         steps.append({"command": command, "label": label, "status": status, "status_detail": detail,
                       "eligible": eligible, "requirements": requirements,
                       "last_event": latest})
+    by_command = {step["command"]: step for step in steps}
+    paths = [{**path, "steps": [by_command[command] for command in path["steps"]]}
+             for path in RECOVERY_PATHS]
     return {"phase": phase, "inventory_max_age_seconds": INVENTORY_MAX_AGE_SECONDS,
-            "steps": steps, "events": events[-50:]}
+            "steps": steps, "detailed_steps": [by_command[command] for command, _ in WORKFLOW_STEPS],
+            "paths": paths, "events": events[-50:]}
 
 
 def step_for(snapshot: dict[str, Any], command: str) -> dict[str, Any] | None:

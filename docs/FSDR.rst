@@ -39,14 +39,21 @@ This creates one auditable, resumable planned-switchover sequence:
 #. ``switchover`` additionally requires a successful validation for that exact
    inventory.
 #. ``validate-post-switchover`` requires ``SERVICE_RESTORED`` and a successful
-   switchover as the latest successful workflow step.
-#. ``reprotect`` requires ``SERVICE_RESTORED`` and a successful post-switchover
-   validation after that switchover.
+   switchover or failover as the latest successful workflow step.
+#. ``reprotect`` requires ``SERVICE_RESTORED`` and a successful post-transition
+   validation after that switchover or failover.
+
+The dashboard also renders an explicit failover branch. It does not require a
+fresh inventory or ``validate-switchover`` because the original primary may be
+unavailable. It does require a persisted inventory, ``source_fenced=true`` and
+``accept_data_loss=true``. When that inventory is older than one hour it also
+requires ``use_follower_annotations=true`` so the reachable follower marker is
+confirmed before promotion.
 
 Inspect the same gates used by submission automation with ``GET /v1/workflow``.
-The read-only dashboard renders the five stages, requirement LEDs and status
-explanations from this durable record. ``failover`` and explicit ``resume``
-remain separate recovery paths and are not advanced automatically.
+The read-only dashboard renders the planned stages, requirement LEDs and status
+explanations from this durable record. Explicit ``resume`` remains a separate
+recovery decision and is not advanced automatically.
 
 Pre-validation
 --------------
@@ -105,9 +112,11 @@ planned role change::
 
     api '{"command":"failover","source_fenced":true,"accept_data_loss":true}'
 
-If the source cannot be reached and the inventory is stale, the additional
-``allow_stale_inventory`` and ``use_follower_annotations`` flags can be used
-only after an operator has confirmed the follower annotations and risk.
+If the saved inventory is older than one hour, include
+``use_follower_annotations=true``. The API workflow gate requires this explicit
+confirmation before it accepts the failover request::
+
+    api '{"command":"failover","source_fenced":true,"accept_data_loss":true,"use_follower_annotations":true}'
 
 Inventory and marker requirements
 ---------------------------------
