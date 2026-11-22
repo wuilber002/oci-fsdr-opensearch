@@ -80,6 +80,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("renderRecoveryPaths", api.DASHBOARD_HTML)
         self.assertIn("drawRecoveryConnectors", api.DASHBOARD_HTML)
         self.assertIn("recovery-connectors", api.DASHBOARD_HTML)
+        self.assertIn("ACTIVE PATH", api.DASHBOARD_HTML)
+        self.assertIn("path-unavailable", api.DASHBOARD_HTML)
         self.assertIn("workflowAttemptTime", api.DASHBOARD_HTML)
         self.assertIn("FLOW_CARD_TEMPLATE", api.DASHBOARD_HTML)
         self.assertIn("function flowCard", api.DASHBOARD_HTML)
@@ -118,12 +120,20 @@ class ApiTests(unittest.TestCase):
             event("switchover", "SERVICE_RESTORED")
             switched = workflow_snapshot(state_dir, state, now=now)
             self.assertEqual(step_for(switched, "switchover")["status"], "succeeded")
+            self.assertEqual(switched["selected_path"], "switchover")
+            self.assertTrue(next(path for path in switched["paths"] if path["id"] == "switchover")["active"])
+            self.assertTrue(next(path for path in switched["paths"] if path["id"] == "failover")["unavailable"])
             self.assertTrue(step_for(switched, "validate-post-switchover")["eligible"])
             self.assertFalse(step_for(switched, "reprotect")["eligible"])
 
             event("validate-post-switchover", "SERVICE_RESTORED")
             validated = workflow_snapshot(state_dir, state, now=now)
             self.assertTrue(step_for(validated, "reprotect")["eligible"])
+            state["phase"] = "PROTECTION_RESTORED"
+            reset = workflow_snapshot(state_dir, state, now=now)
+            self.assertIsNone(reset["selected_path"])
+            self.assertTrue(reset["paths_resettable"])
+            self.assertFalse(any(path["unavailable"] for path in reset["paths"]))
 
     def test_api_workflow_gate_rejects_out_of_order_switchover(self):
         class Manager:
@@ -169,6 +179,12 @@ class ApiTests(unittest.TestCase):
             self.assertIn("failover", [step["command"] for step in accepted["steps"]])
             self.assertEqual([path["id"] for path in accepted["paths"]],
                              ["switchover", "failover", "shared"])
+            queued = workflow_snapshot(state_dir, state, jobs=[{
+                "request": {"command": "failover"}, "status": "queued",
+                "submitted_at": "2026-01-01T00:00:00Z",
+            }])
+            self.assertEqual(queued["selected_path"], "failover")
+            self.assertTrue(next(path for path in queued["paths"] if path["id"] == "switchover")["unavailable"])
 
     def test_workflow_expired_inventory_blocks_validation(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -145,6 +145,14 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
     inventory_at = state.get("inventory_at")
     transition_event = max((event for event in (switch, failover) if event and event.get("status") == "succeeded"),
                            key=_event_order, default=None)
+    transition_attempt = max((event for event in (switch, failover) if event),
+                             key=_event_order, default=None)
+    active_transition = next((command for command in ("switchover", "failover") if command in current), None)
+    # Selecting a route is durable for the non-stable part of a recovery.  Once
+    # protection is restored (or the controller returns to READY), either route
+    # can be evaluated again for a new recovery cycle.
+    selected_path = active_transition or (None if phase in STABLE_PHASES else
+                                          (transition_attempt or {}).get("command"))
 
     stable = phase in STABLE_PHASES
     stable_detail = ("FSDR state is {} and accepts this preparation step.".format(phase)
@@ -268,9 +276,13 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
                       "eligible": eligible, "requirements": requirements,
                       "last_event": latest, "last_attempt_at": last_attempt_at})
     by_command = {step["command"]: step for step in steps}
-    paths = [{**path, "steps": [by_command[command] for command in path["steps"]]}
+    paths = [{**path, "steps": [by_command[command] for command in path["steps"]],
+              "active": path["id"] == selected_path,
+              "unavailable": bool(selected_path and path["id"] in {"switchover", "failover"}
+                                  and path["id"] != selected_path)}
              for path in RECOVERY_PATHS]
     return {"phase": phase, "inventory_max_age_seconds": INVENTORY_MAX_AGE_SECONDS,
+            "selected_path": selected_path, "paths_resettable": phase in STABLE_PHASES,
             "steps": steps, "detailed_steps": [by_command[command] for command, _ in WORKFLOW_STEPS],
             "paths": paths, "events": events[-50:]}
 
