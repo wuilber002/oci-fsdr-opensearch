@@ -777,6 +777,15 @@ def monitor_snapshot():
         return data
 
 
+def _index_write_mode(settings):
+    """Translate OpenSearch index block settings into a dashboard-safe mode."""
+    if not isinstance(settings, dict):
+        return "unknown"
+    blocked = any(str(settings.get("index.blocks." + block, "false")).lower() == "true"
+                  for block in ("write", "read_only", "read_only_allow_delete", "metadata"))
+    return "read_only" if blocked else "read_write"
+
+
 def _monitor_snapshot(configured, state_dir, state):
     """Read OpenSearch safely for the web observer without changing FSDR state.
 
@@ -833,6 +842,12 @@ def _monitor_snapshot(configured, state_dir, state):
             counts = {}
             view["error"] = "Could not read one or more document counts ({})".format(
                 type(exc).__name__)
+        try:
+            index_settings = cs[name].request("GET", "/_settings?flat_settings=true")
+        except Exception:
+            # The observer must stay read-only and useful when a permission or
+            # transient OpenSearch error prevents reading block settings.
+            index_settings = {}
         for entry in state.get("indices", []):
             index = entry.get(name)
             if not index:
@@ -840,7 +855,8 @@ def _monitor_snapshot(configured, state_dir, state):
             meta = mappings.get(index, {}).get("mappings", {}).get("_meta", {})
             marker = meta.get("fsdr", {}) if isinstance(meta, dict) else {}
             item = {"index": index, "documents": None, "replication": None, "error": None,
-                    "fsdr_replicate": isinstance(marker, dict) and marker.get("replicate") is True}
+                    "fsdr_replicate": isinstance(marker, dict) and marker.get("replicate") is True,
+                    "write_mode": _index_write_mode(index_settings.get(index, {}).get("settings"))}
             try:
                 if index not in counts:
                     raise Error("Index was not returned by the document count request")

@@ -746,14 +746,17 @@ class ApiTests(unittest.TestCase):
 
     def test_monitor_reports_the_live_fsdr_replication_marker(self):
         class Client:
-            def __init__(self, marked, syncing):
+            def __init__(self, marked, syncing, write_blocked=False):
                 self.marked = marked
                 self.syncing = syncing
+                self.write_blocked = write_blocked
 
             def request(self, method, path):
-                assert (method, path) == ("GET", "/_mapping")
-                meta = {"fsdr": {"replicate": True}} if self.marked else {}
-                return {"orders": {"mappings": {"_meta": meta}}}
+                if (method, path) == ("GET", "/_mapping"):
+                    meta = {"fsdr": {"replicate": True}} if self.marked else {}
+                    return {"orders": {"mappings": {"_meta": meta}}}
+                assert (method, path) == ("GET", "/_settings?flat_settings=true")
+                return {"orders": {"settings": {"index.blocks.write": str(self.write_blocked).lower()}}}
 
             def document_counts(self, scoped=False):
                 assert scoped is False
@@ -781,12 +784,14 @@ class ApiTests(unittest.TestCase):
                     "b": {"id": "b-id", "display_name": "Beta"},
                 }}
                 with patch("fsdr_opensearch.api._observer_clients",
-                           return_value=(cfg, {"a": Client(True, False), "b": Client(False, True)})):
+                           return_value=(cfg, {"a": Client(True, False), "b": Client(False, True, True)})):
                     data = api.monitor_snapshot()
         finally:
             api.CONFIG = original
         self.assertTrue(data["clusters"]["a"]["indices"][0]["fsdr_replicate"])
         self.assertFalse(data["clusters"]["b"]["indices"][0]["fsdr_replicate"])
+        self.assertEqual(data["clusters"]["a"]["indices"][0]["write_mode"], "read_write")
+        self.assertEqual(data["clusters"]["b"]["indices"][0]["write_mode"], "read_only")
         self.assertEqual(data["topology"], "unidirectional")
 
     def test_monitor_marks_bidirectional_ccr_as_unsupported_topology(self):
