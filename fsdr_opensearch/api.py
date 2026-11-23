@@ -854,9 +854,15 @@ def _monitor_snapshot(configured, state_dir, state):
                 continue
             meta = mappings.get(index, {}).get("mappings", {}).get("_meta", {})
             marker = meta.get("fsdr", {}) if isinstance(meta, dict) else {}
+            write_mode = _index_write_mode(index_settings.get(index, {}).get("settings"))
             item = {"index": index, "documents": None, "replication": None, "error": None,
                     "fsdr_replicate": isinstance(marker, dict) and marker.get("replicate") is True,
-                    "write_mode": _index_write_mode(index_settings.get(index, {}).get("settings"))}
+                    "write_mode": write_mode,
+                    "write_detail": ("OpenSearch has an index write block enabled."
+                                     if write_mode == "read_only" else
+                                     "OpenSearch permits writes to this index."
+                                     if write_mode == "read_write" else
+                                     "The dashboard could not determine this index's write-block setting.")}
             try:
                 if index not in counts:
                     raise Error("Index was not returned by the document count request")
@@ -870,6 +876,12 @@ def _monitor_snapshot(configured, state_dir, state):
                     item["replication"] = {"status": status.get("status"),
                                            "leader_checkpoint": details.get("leader_checkpoint"),
                                            "follower_checkpoint": details.get("follower_checkpoint")}
+                    if status.get("status") == "SYNCING":
+                        # CCR followers are effectively read-only even when
+                        # index.blocks.write is not explicitly present.
+                        item["write_mode"] = "read_only"
+                        item["write_detail"] = ("This index is an active CCR follower; "
+                                                "OpenSearch rejects application writes while replication runs.")
                 else:
                     item["replication"] = {"status": "PRIMARY"}
             except Exception as exc:
