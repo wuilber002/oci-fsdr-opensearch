@@ -744,6 +744,17 @@ class ApiTests(unittest.TestCase):
             api.CONFIG = original
         self.assertEqual(data["errors"], ["Cannot prepare OpenSearch observer: Discovery is unavailable"])
 
+    def test_effective_write_state_uses_all_authoritative_gates(self):
+        healthy = {"status": "green", "active_primary_shards": 1}
+        self.assertEqual(api._effective_write_state({}, None, True, healthy, None, False)[0], "read_write")
+        self.assertEqual(api._effective_write_state({}, "cluster.blocks.read_only", True, healthy, None, False)[0], "read_only")
+        self.assertEqual(api._effective_write_state({"index.blocks.metadata": "true"}, None, True, healthy, None, False)[0], "read_write")
+        self.assertEqual(api._effective_write_state({"index.blocks.write": "true"}, None, True, healthy, None, False)[0], "read_only")
+        self.assertEqual(api._effective_write_state({}, None, True, healthy, "SYNCING", True)[0], "read_only")
+        self.assertEqual(api._effective_write_state({}, None, True, {"status": "red", "active_primary_shards": 0}, None, False)[0], "unavailable")
+        self.assertEqual(api._effective_write_state({}, None, False, healthy, None, False)[0], "unknown")
+        self.assertEqual(api._effective_write_state(None, None, True, healthy, None, False)[0], "unknown")
+
     def test_monitor_reports_the_live_fsdr_replication_marker(self):
         class Client:
             def __init__(self, marked, syncing, write_blocked=False):
@@ -755,8 +766,12 @@ class ApiTests(unittest.TestCase):
                 if (method, path) == ("GET", "/_mapping"):
                     meta = {"fsdr": {"replicate": True}} if self.marked else {}
                     return {"orders": {"mappings": {"_meta": meta}}}
-                assert (method, path) == ("GET", "/_settings?flat_settings=true")
-                return {"orders": {"settings": {"index.blocks.write": str(self.write_blocked).lower()}}}
+                if (method, path) == ("GET", "/_settings?flat_settings=true"):
+                    return {"orders": {"settings": {"index.blocks.write": str(self.write_blocked).lower()}}}
+                if (method, path) == ("GET", "/_cluster/settings?include_defaults=true&flat_settings=true"):
+                    return {"defaults": {}, "persistent": {}, "transient": {}}
+                assert (method, path) == ("GET", "/_cluster/health?level=indices")
+                return {"indices": {"orders": {"status": "green", "active_primary_shards": 1}}}
 
             def document_counts(self, scoped=False):
                 assert scoped is False
@@ -792,7 +807,7 @@ class ApiTests(unittest.TestCase):
         self.assertFalse(data["clusters"]["b"]["indices"][0]["fsdr_replicate"])
         self.assertEqual(data["clusters"]["a"]["indices"][0]["write_mode"], "read_write")
         self.assertEqual(data["clusters"]["b"]["indices"][0]["write_mode"], "read_only")
-        self.assertIn("active CCR follower", data["clusters"]["b"]["indices"][0]["write_detail"])
+        self.assertIn("CCR follower in SYNCING", data["clusters"]["b"]["indices"][0]["write_detail"])
         self.assertEqual(data["topology"], "unidirectional")
 
     def test_monitor_marks_bidirectional_ccr_as_unsupported_topology(self):

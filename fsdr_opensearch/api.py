@@ -777,14 +777,82 @@ def monitor_snapshot():
         return data
 
 
-def _index_write_mode(settings):
-    """Translate OpenSearch index block settings into a dashboard-safe mode."""
-    if not isinstance(settings, dict):
-        return "unknown"
-    blocked = any(str(settings.get("index.blocks." + block, "false")).lower() == "true"
-                  for block in ("write", "read_only", "read_only_allow_delete", "metadata"))
-    return "read_only" if blocked else "read_write"
+WRITE_BLOCK_SETTINGS = (
+    "index.blocks.write",
+    "index.blocks.read_only",
+    "index.blocks.read_only_allow_delete",
+    "index.blocks.search_only",
+)
+CLUSTER_WRITE_BLOCK_SETTINGS = (
+    "cluster.blocks.read_only",
+    "cluster.blocks.read_only_allow_delete",
+)
+CCR_READ_ONLY_STATUSES = {"SYNCING", "BOOTSTRAPPING", "PAUSED"}
 
+
+def _enabled(value):
+    return str(value).lower() == "true"
+
+
+def _cluster_write_block(cluster_settings):
+    """Return the effective cluster-wide document-write block, if present."""
+    if not isinstance(cluster_settings, dict):
+        return None
+    # OpenSearch resolves defaults < persistent < transient. Resolve each
+    # setting in that order so an explicit false at a higher priority wins.
+    for setting in CLUSTER_WRITE_BLOCK_SETTINGS:
+        value = None
+        for scope in ("defaults", "persistent", "transient"):
+            values = cluster_settings.get(scope, {})
+            if isinstance(values, dict) and setting in values:
+                value = values[setting]
+        if _enabled(value):
+            return setting
+    return None
+
+
+def _index_write_block(settings):
+    """Return the exact index setting that blocks document writes, if any."""
+    if not isinstance(settings, dict):
+        return None
+    for setting in WRITE_BLOCK_SETTINGS:
+        if _enabled(settings.get(setting)):
+            return setting
+    return None
+
+
+def _effective_write_state(index_settings, cluster_block, cluster_observed, health, replication_status,
+                           is_follower):
+    """Classify controller-observable document-write access for one index.
+
+    This is intentionally read-only: it never submits a probe document. A
+    successful application write also depends on its own authorization,
+    pipeline and mapping, which cannot be proven by the dashboard credential.
+    """
+    if not cluster_observed:
+        return "unknown", "The dashboard could not read effective cluster write-block settings."
+    if not isinstance(index_settings, dict):
+        return "unknown", "The dashboard could not read index write-block settings."
+    if cluster_block:
+        return "read_only", "Cluster write block is enabled: {}.".format(cluster_block)
+    index_block = _index_write_block(index_settings)
+    if index_block:
+        return "read_only", "Index write block is enabled: {}.".format(index_block)
+    if not isinstance(health, dict):
+        return "unknown", "The dashboard could not read index shard health."
+    try:
+        primary_shards = int(health.get("active_primary_shards", 0) or 0)
+    except (TypeError, ValueError):
+        return "unknown", "The dashboard received an invalid primary-shard health value."
+    if health.get("status") == "red" or primary_shards < 1:
+        return "unavailable", "No active primary shard is available for document writes."
+    if is_follower:
+        if replication_status in CCR_READ_ONLY_STATUSES:
+            return "read_only", ("This index is a CCR follower in {}; OpenSearch keeps it "
+                                 "read-only until replication is stopped.").format(replication_status)
+        if replication_status is None:
+            return "unknown", "The dashboard could not determine the CCR follower state."
+    return "read_write", "No cluster, index, shard, or active-CCR restriction blocks document writes."
 
 def _monitor_snapshot(configured, state_dir, state):
     """Read OpenSearch safely for the web observer without changing FSDR state.
@@ -847,22 +915,26 @@ def _monitor_snapshot(configured, state_dir, state):
         except Exception:
             # The observer must stay read-only and useful when a permission or
             # transient OpenSearch error prevents reading block settings.
-            index_settings = {}
+            index_settings = None
+        try:
+            cluster_settings = cs[name].request(
+                "GET", "/_cluster/settings?include_defaults=true&flat_settings=true")
+        except Exception:
+            cluster_settings = None
+        try:
+            health_indices = cs[name].request("GET", "/_cluster/health?level=indices").get("indices", {})
+        except Exception:
+            health_indices = {}
+        cluster_block = _cluster_write_block(cluster_settings)
         for entry in state.get("indices", []):
             index = entry.get(name)
             if not index:
                 continue
             meta = mappings.get(index, {}).get("mappings", {}).get("_meta", {})
             marker = meta.get("fsdr", {}) if isinstance(meta, dict) else {}
-            write_mode = _index_write_mode(index_settings.get(index, {}).get("settings"))
             item = {"index": index, "documents": None, "replication": None, "error": None,
                     "fsdr_replicate": isinstance(marker, dict) and marker.get("replicate") is True,
-                    "write_mode": write_mode,
-                    "write_detail": ("OpenSearch has an index write block enabled."
-                                     if write_mode == "read_only" else
-                                     "OpenSearch permits writes to this index."
-                                     if write_mode == "read_write" else
-                                     "The dashboard could not determine this index's write-block setting.")}
+                    "write_mode": "unknown", "write_detail": "Write state has not been observed yet."}
             try:
                 if index not in counts:
                     raise Error("Index was not returned by the document count request")
@@ -871,19 +943,19 @@ def _monitor_snapshot(configured, state_dir, state):
                 status = cs[name].status(index)
                 if status.get("status") == "SYNCING":
                     observed_directions.add(("b" if name == "a" else "a", name))
-                if state.get("active") != name:
+                is_follower = state.get("active") != name
+                if is_follower:
                     details = status.get("syncing_details", {})
                     item["replication"] = {"status": status.get("status"),
                                            "leader_checkpoint": details.get("leader_checkpoint"),
                                            "follower_checkpoint": details.get("follower_checkpoint")}
-                    if status.get("status") == "SYNCING":
-                        # CCR followers are effectively read-only even when
-                        # index.blocks.write is not explicitly present.
-                        item["write_mode"] = "read_only"
-                        item["write_detail"] = ("This index is an active CCR follower; "
-                                                "OpenSearch rejects application writes while replication runs.")
                 else:
                     item["replication"] = {"status": "PRIMARY"}
+                item["write_mode"], item["write_detail"] = _effective_write_state(
+                    (index_settings.get(index, {}).get("settings")
+                     if isinstance(index_settings, dict) else None), cluster_block,
+                    isinstance(cluster_settings, dict), health_indices.get(index),
+                    status.get("status") if is_follower else None, is_follower)
             except Exception as exc:
                 item["error"] = type(exc).__name__
             view["indices"].append(item)
