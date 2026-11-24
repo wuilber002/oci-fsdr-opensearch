@@ -99,6 +99,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("Inventory schedule", api.DASHBOARD_HTML)
         self.assertIn("mon.workflow?.inventory?.age_seconds", api.DASHBOARD_HTML)
         self.assertNotIn("mon.workflow?.inventory_age_seconds", api.DASHBOARD_HTML)
+        self.assertIn("function inventoryAgeDuration(value)", api.DASHBOARD_HTML)
         self.assertIn("Protection status", api.DASHBOARD_HTML)
         self.assertIn("Recovery point", api.DASHBOARD_HTML)
         self.assertIn("Cluster health", api.DASHBOARD_HTML)
