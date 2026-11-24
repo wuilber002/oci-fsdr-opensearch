@@ -358,6 +358,17 @@ def assert_writable(client, index):
         raise Error(f"Index {index} still has a write block")
 
 
+def read_transport_failure(exc):
+    """Whether a read could not reach a cluster at all.
+
+    Failover may proceed under the operator's fencing attestation only when the
+    old primary is genuinely unreachable.  Authentication, authorization and
+    HTTP failures remain actionable failures and must never be treated as an
+    outage.
+    """
+    return str(exc).startswith("Read transport failure on cluster ")
+
+
 def transition(cfg, cs, store, mode, resume=False,
                source_fenced=False, accept_data_loss=False, allow_stale_inventory=False,
                use_follower_annotations=False):
@@ -367,11 +378,14 @@ def transition(cfg, cs, store, mode, resume=False,
         tr = state.get("transition") if state else None
         if not tr or tr["mode"] != mode:
             raise Error("No compatible transition is available to resume")
-        if state["phase"] in ("SERVICE_RESTORED", "PROTECTION_RESTORED"):
+        if state["phase"] == "PROTECTION_RESTORED":
             return state
-        if state["phase"] != "TRANSITION":
+        if state["phase"] not in ("TRANSITION", "SERVICE_RESTORED"):
             raise Error("Another phase is in progress")
-        required_annotation_manifest(state, tr["source"], tr["target"])
+        if state["phase"] == "TRANSITION":
+            required_annotation_manifest(state, tr["source"], tr["target"])
+        if state["phase"] == "SERVICE_RESTORED" and mode != "failover":
+            return state
     else:
         if state and state["phase"] not in IDLE:
             raise Error("A transition is pending: use --resume or complete reprotect")
@@ -420,6 +434,7 @@ def transition(cfg, cs, store, mode, resume=False,
 
     labels = {
         "block_source": "Blocking writes on current primary",
+        "fence_source": "Fencing writes on former primary when reachable",
         "final_sync": "Waiting for final CCR synchronization",
         "stop_followers": "Stopping replication on destination",
         "enable_target": "Enabling writes on new primary",
@@ -431,12 +446,18 @@ def transition(cfg, cs, store, mode, resume=False,
             tr["current_step"] = name
             store.write(state)
             LOG.info("step_started transition=%s step=%s", tr["id"], name)
-            action()
+            completed = action()
+            if completed is False:
+                tr["current_step"] = None
+                store.write(state)
+                LOG.info("step_deferred transition=%s step=%s", tr["id"], name)
+                return False
             tr["steps"].append(name)
             store.write(state)
             LOG.info("step_completed transition=%s step=%s", tr["id"], name)
             if name != "final_sync":
                 feedback("%s: completed." % labels.get(name, name))
+            return True
 
     def identity_check():
         for entry in entries:
@@ -446,6 +467,31 @@ def transition(cfg, cs, store, mode, resume=False,
 
     identity_check()  # Repeat on every resume, not just the first execution.
     no_autofollow(cs[target])
+    if mode == "failover":
+        def fence_source_if_reachable():
+            # A failover can proceed only with the explicit source_fenced
+            # attestation when the old primary is unreachable.  When it is
+            # reachable, FSDR itself must fence every protected index before
+            # enabling writes on the promoted cluster.
+            try:
+                cs[source].request("GET", "/_cluster/health")
+            except Error as exc:
+                if not read_transport_failure(exc):
+                    raise
+                tr["source_fence"] = {"status": "externally_attested_unreachable",
+                                      "observed_at": time.time(), "detail": "source transport is unavailable"}
+                feedback("Former primary is unreachable; retaining the operator fencing attestation.")
+                return False
+            for entry in entries:
+                assert_uuid(cs[source], scoped(cfg, entry[source]), entry["uuids"][source])
+                result = cs[source].request("PUT", f"/{entry[source]}/_block/write")
+                if not result.get("acknowledged"):
+                    raise Error("Write block was not acknowledged by the former primary")
+                if not write_blocked(cs[source], entry[source]):
+                    raise Error("Write block did not become active on the former primary")
+            tr["source_fence"] = {"status": "blocked_by_fsdr", "observed_at": time.time()}
+
+        step("fence_source", fence_source_if_reachable)
     if mode == "switchover":
         no_autofollow(cs[source])
 

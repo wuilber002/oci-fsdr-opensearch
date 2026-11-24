@@ -108,7 +108,10 @@ Failover
 
 Failover is for loss of the former primary. It requires an explicit external
 fencing attestation and acceptance of potential data loss. Do not use it for a
-planned role change::
+planned role change. If the former primary is reachable, FSDR verifies its
+identity and applies ``index.blocks.write=true`` to every protected index before
+it promotes the target. If it is unreachable, failover continues only under the
+explicit fencing attestation::
 
     api '{"command":"failover","source_fenced":true,"accept_data_loss":true}'
 
@@ -146,4 +149,6 @@ Use ``{"command":"status"}`` to retrieve durable state, or inspect a job by
 ``GET /v1/jobs/<id>/output``. A restarted API marks a running job as
 ``interrupted`` and never repeats it automatically. For an interrupted
 switchover or failover, submit the command with ``"resume":true`` only after
-reviewing the state and audit log.
+reviewing the state and audit log. A failover resumed in ``SERVICE_RESTORED``
+also retries former-primary write fencing when that cluster becomes reachable,
+which remediates a transition recorded before the write-fence step existed.

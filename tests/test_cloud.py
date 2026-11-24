@@ -192,12 +192,13 @@ class CLITests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(cli.main(["status", S, "--state-dir", str(self.directory / "dr")]), 0)
 
-    def test_cli_failover_with_source_oci_down_uses_cache_and_never_source_opensearch(self):
+    def test_cli_failover_with_source_oci_down_uses_cache_and_uses_fencing_attestation(self):
         self.assertEqual(self.run_cli("inventory")[0], 0)
         cloud = FakeCloud()
         cloud.fail[A] = CloudError("GetOpensearchCluster", 503, True)
         self.cs["b"]._sync = lambda index: None
-        self.cs["a"].request = lambda *args, **kwargs: self.fail("contacted source OpenSearch")
+        self.cs["a"].request = lambda *args, **kwargs: (_ for _ in ()).throw(
+            Error("Read transport failure on cluster a (endpoint https://a.example:9200): GET /_cluster/health; no change was sent. offline"))
         self.cs["a"].uuid = lambda *args: self.fail("read source UUID")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
                 patch("fsdr_opensearch.cli.Cloud", return_value=cloud), \

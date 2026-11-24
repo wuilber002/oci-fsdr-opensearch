@@ -414,16 +414,45 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(Error):
             transition(self.cfg, self.cs, self.store, "failover")
 
-    def test_failover_never_contacts_source(self):
+    def test_failover_fences_a_reachable_former_primary_before_promotion(self):
+        self.seed()
+        state = transition(self.cfg, self.cs, self.store, "failover",
+                           source_fenced=True, accept_data_loss=True)
+        self.assertEqual(state["active"], "b")
+        self.assertEqual(state["transition"]["source_fence"]["status"], "blocked_by_fsdr")
+        self.assertIn("fence_source", state["transition"]["steps"])
+        self.assertTrue(self.cs["a"].data["fsdr-demo-0001"]["blocked"])
+        self.assertTrue(validate_post_switchover(self.cfg, self.cs, self.store)["ready_for_reprotect"])
+
+    def test_failover_resume_repairs_fence_for_a_previous_service_restored_state(self):
+        self.seed()
+        state = transition(self.cfg, self.cs, self.store, "failover",
+                           source_fenced=True, accept_data_loss=True)
+        # Simulate a transition recorded by the version that did not fence a
+        # reachable former primary during failover.
+        self.cs["a"].data["fsdr-demo-0001"]["blocked"] = False
+        state["transition"]["steps"].remove("fence_source")
+        state["transition"].pop("source_fence")
+        self.store.write(state)
+        repaired = transition(self.cfg, self.cs, self.store, "failover", resume=True)
+        self.assertEqual(repaired["phase"], "SERVICE_RESTORED")
+        self.assertTrue(self.cs["a"].data["fsdr-demo-0001"]["blocked"])
+        self.assertIn("fence_source", repaired["transition"]["steps"])
+
+    def test_failover_uses_attestation_only_when_source_is_unreachable(self):
         self.seed()
         # Disconnect source after freezing the already-received follower snapshot.
         # FakeCluster's replication mirror is disabled while retaining CCR metadata.
         self.cs["b"]._sync = lambda index: None
-        self.cs["a"].request = lambda *args, **kwargs: self.fail("contacted unavailable source")
+        self.cs["a"].request = lambda *args, **kwargs: (_ for _ in ()).throw(
+            Error("Read transport failure on cluster a (endpoint https://a.example:9200): GET /_cluster/health; no change was sent. offline"))
         self.cs["a"].uuid = lambda *args: self.fail("read unavailable source UUID")
         state = transition(self.cfg, self.cs, self.store, "failover",
                            source_fenced=True, accept_data_loss=True)
         self.assertEqual(state["active"], "b")
+        self.assertEqual(state["transition"]["source_fence"]["status"],
+                         "externally_attested_unreachable")
+        self.assertNotIn("fence_source", state["transition"]["steps"])
 
     def test_uuid_drift_blocks_delete(self):
         self.seed()
