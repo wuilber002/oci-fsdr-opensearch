@@ -58,17 +58,17 @@ fi
 
 install_dependencies() {
   if ! command -v dnf >/dev/null 2>&1; then
-    echo "Automatic dependency installation supports dnf-based hosts only. Install podman, podman-compose, python3, curl, openssl and ca-certificates, then rerun with --skip-dependencies." >&2
+    echo "Automatic dependency installation supports dnf-based hosts only. Install podman, python3, curl, openssl and ca-certificates, then rerun with --skip-dependencies." >&2
     exit 1
   fi
-  dnf install -y podman podman-compose python3 curl openssl ca-certificates
+  dnf install -y podman python3 curl openssl ca-certificates
   systemctl enable --now podman-restart.service 2>/dev/null || true
 }
 
 if [[ "$SKIP_DEPENDENCIES" != true ]]; then
   install_dependencies
 fi
-for command in podman podman-compose python3 curl openssl; do
+for command in podman python3 curl openssl; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Required host command is missing: $command" >&2
     exit 1
@@ -82,7 +82,6 @@ fi
 install -d -m 0750 "$FSDR_HOME/bin" "$FSDR_HOME/runtime/config" "$FSDR_HOME/runtime/state" "$FSDR_HOME/runtime/log"
 install -m 0755 "$SOURCE_ROOT/scripts/fsdr-job.sh" "$FSDR_HOME/bin/fsdr-job.sh"
 install -m 0755 "$SOURCE_ROOT/scripts/fsdr-build-image.sh" "$FSDR_HOME/bin/fsdr-build-image.sh"
-install -m 0644 "$SOURCE_ROOT/scripts/compose.podman.yaml" "$FSDR_HOME/compose.yaml"
 chown -R 10001:10001 "$FSDR_HOME/runtime"
 chmod 0750 "$FSDR_HOME/runtime" "$FSDR_HOME/runtime/config" "$FSDR_HOME/runtime/state" "$FSDR_HOME/runtime/log"
 
@@ -124,14 +123,28 @@ elif [[ -n "$SECRET_ID" ]]; then
 fi
 
 "$FSDR_HOME/bin/fsdr-build-image.sh" "$SOURCE_ROOT"
-compose() { podman-compose -f "$FSDR_HOME/compose.yaml" "$@"; }
-compose down || true
-compose run --rm --no-deps fsdr-api bootstrap
+container_options=(
+  --network host
+  --user 10001:10001
+  --read-only
+  --tmpfs /tmp:mode=0700
+  --env FSDR_API_HOST=127.0.0.1
+  --env FSDR_API_PORT=1604
+  --env FSDR_CONFIG=/etc/oci-opensearch-fsdr/config.json
+  --env FSDR_API_JOB_DIR=/var/lib/oci-opensearch-fsdr/api-jobs
+  --volume "$FSDR_HOME/runtime/config:/etc/oci-opensearch-fsdr:ro,Z"
+  --volume "$FSDR_HOME/runtime/state:/var/lib/oci-opensearch-fsdr:rw,Z"
+  --volume "$FSDR_HOME/runtime/log:/var/log/oci-opensearch-fsdr:rw,Z"
+)
+image=localhost/oci-opensearch-fsdr:local
+podman rm --force oci-opensearch-fsdr >/dev/null 2>&1 || true
+podman run --rm "${container_options[@]}" "$image" bootstrap
 # The API token/private key stay private to UID 10001. The local helper only
 # needs traversal and the public CA certificate.
 chmod 0711 "$FSDR_HOME/runtime/state" "$FSDR_HOME/runtime/state/api-secrets"
 chmod 0644 "$FSDR_HOME/runtime/state/api-secrets/tls.crt"
-compose up -d
+podman run --detach --name oci-opensearch-fsdr --restart=always \
+  "${container_options[@]}" "$image"
 
 if [[ "$UPDATE" == true ]]; then
   action="updated"

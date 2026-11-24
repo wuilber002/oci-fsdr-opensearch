@@ -1,7 +1,7 @@
 Container deployment, API and web console
 =========================================
 
-The deployment is one Podman Compose service named ``fsdr-api``. The image
+The deployment is one Podman container named ``oci-opensearch-fsdr``. The image
 contains the FSDR controller and its Python 3.9 runtime. The host keeps only
 Podman, Python for the command-line helper, and the persistent operational
 files under ``/opt/oci-fsdr-opensearch``. It does not use the Git checkout at
@@ -13,7 +13,6 @@ Persistent runtime layout
 The installer creates these durable paths on the host::
 
     /opt/oci-fsdr-opensearch/bin/fsdr-job.sh       Local authenticated job helper
-    /opt/oci-fsdr-opensearch/compose.yaml          Podman service definition
     /opt/oci-fsdr-opensearch/runtime/config/       Runtime configuration and Vault Secret OCID
     /opt/oci-fsdr-opensearch/runtime/state/        FSDR state, jobs, API token and TLS material
     /opt/oci-fsdr-opensearch/runtime/log/          FSDR JSONL audit logs
@@ -36,7 +35,7 @@ successful installation::
     sudo ./scripts/install-podman.sh --secret-id '<VAULT_SECRET_OCID>'
     rm -rf /tmp/oci-opensearch-fsdr
 
-The installer installs Podman, Podman Compose, Python, curl, OpenSSL and CA
+The installer installs Podman, Python, curl, OpenSSL and CA
 certificates on a dnf-based Linux VM. Use ``--skip-dependencies`` only when
 those host commands are already installed. It builds the local image, writes
 ``/opt/oci-fsdr-opensearch/runtime/config/config.json``, creates a random
@@ -57,8 +56,8 @@ Update an existing installation
 -------------------------------
 
 To update the controller, clone the desired revision into a temporary path and
-run the same installer with ``--update``. It replaces the image, compose file
-and helper scripts, then recreates the container. It deliberately preserves
+run the same installer with ``--update``. It replaces the image and helper
+scripts, then recreates the container. It deliberately preserves
 ``runtime/config``, ``runtime/state`` and ``runtime/log``::
 
     git clone https://github.com/wuilber002/oci-fsdr-opensearch.git /tmp/oci-opensearch-fsdr-update
@@ -98,8 +97,8 @@ For a workstation, create a tunnel and then open the same URL locally::
     ssh -L 1604:127.0.0.1:1604 opc@<VM_IP>
 
 The dashboard is intentionally read-only and does not require the API Bearer
-token. It is safe to use for a local operator display because Compose binds the
-service only to ``127.0.0.1``; remote viewing must use an SSH tunnel. Job,
+token. It is safe to use for a local operator display because the container
+binds the service only to ``127.0.0.1``; remote viewing must use an SSH tunnel. Job,
 state, workflow-gate changes, job history and paired-cluster comparison arrive
 through one Server-Sent Events stream. The stream sends a full snapshot on
 connection and whenever durable FSDR state or job lifecycle changes; the backend
