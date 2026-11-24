@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SOURCE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-FSDR_HOME=${FSDR_HOME:-/opt/oci-opensearch-fsdr}
+FSDR_HOME=${FSDR_HOME:-/opt/oci-fsdr-opensearch}
 SECRET_ID=""
 REPLACE_CONFIG=false
 SKIP_DEPENDENCIES=false
@@ -15,7 +15,7 @@ Usage:
   sudo ./scripts/install-podman.sh --secret-id <vault-secret-ocid> [options]
   sudo ./scripts/install-podman.sh --update [options]
 
-This copies the deployment files to /opt/oci-opensearch-fsdr, builds a local
+This copies the deployment files to /opt/oci-fsdr-opensearch, builds a local
 Podman image and starts the controller. The repository checkout is not used at
 runtime and may be removed after a successful installation or update.
 
@@ -43,8 +43,8 @@ if [[ $EUID -ne 0 ]]; then
   echo "Run this installer with sudo or as root." >&2
   exit 1
 fi
-if [[ "$FSDR_HOME" != "/opt/oci-opensearch-fsdr" ]]; then
-  echo "FSDR_HOME must be /opt/oci-opensearch-fsdr because the Podman deployment uses that persistent host path." >&2
+if [[ "$FSDR_HOME" != "/opt/oci-fsdr-opensearch" ]]; then
+  echo "FSDR_HOME must be /opt/oci-fsdr-opensearch because the Podman deployment uses that persistent host path." >&2
   exit 2
 fi
 if [[ ! -f "$SOURCE_ROOT/Dockerfile" || ! -f "$SOURCE_ROOT/scripts/fsdr-job.sh" ]]; then

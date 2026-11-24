@@ -28,7 +28,7 @@ the installer::
 Open ``https://127.0.0.1:1604`` locally on the VM, or through an SSH tunnel.
 The installer installs Podman, Python and its required host utilities on
 dnf-based Linux, builds ``localhost/oci-opensearch-fsdr:local``, and stores
-the operational files under ``/opt/oci-opensearch-fsdr``. The clone is used
+the operational files under ``/opt/oci-fsdr-opensearch``. The clone is used
 only for the image build and can be removed after the command succeeds.
 
 Documentation

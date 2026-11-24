@@ -23,14 +23,14 @@ class PodmanInstallationTests(unittest.TestCase):
     def test_podman_installation_keeps_runtime_outside_checkout(self):
         installer = (ROOT / "scripts/install-podman.sh").read_text()
         compose = (ROOT / "scripts/compose.podman.yaml").read_text()
-        self.assertIn("/opt/oci-opensearch-fsdr", installer)
+        self.assertIn("/opt/oci-fsdr-opensearch", installer)
         self.assertIn("The source checkout can now be removed.", installer)
         self.assertIn("podman podman-compose python3 curl openssl ca-certificates", installer)
         self.assertIn('install -m 0755 "$SOURCE_ROOT/scripts/fsdr-job.sh"', installer)
         self.assertIn('compose run --rm --no-deps fsdr-api bootstrap', installer)
         self.assertNotIn("build:", compose)
         self.assertIn("image: localhost/oci-opensearch-fsdr:local", compose)
-        self.assertIn("/opt/oci-opensearch-fsdr/runtime/state", compose)
+        self.assertIn("/opt/oci-fsdr-opensearch/runtime/state", compose)
 
     def test_update_preserves_configuration_and_state(self):
         installer = (ROOT / "scripts/install-podman.sh").read_text()
