@@ -236,6 +236,8 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
             _requirement("stable-state", stable, stable_detail,
                 "Preparation is allowed only from a stable FSDR state, preventing a second operation from overlapping an unfinished transition.",
                 blocked=not stable),
+            _requirement("fresh-inventory", fresh, fresh_detail,
+                "A completed inventory remains valid for one hour as evidence for validate switchover and switchover. This indicator does not prevent running inventory again to refresh it."),
         ],
         "validate-switchover": [
             _requirement("fresh-inventory", fresh, fresh_detail,
@@ -292,7 +294,11 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
         if command == "inventory" and latest is None and recorded_inventory:
             latest = recorded_inventory
         frozen_requirements = (latest or {}).get("requirements")
-        eligible = all(item["met"] for item in requirements) and not controller_busy
+        admission_requirements = (requirements if command != "inventory" else
+                                  [item for item in requirements if item["key"] != "fresh-inventory"])
+        # A stale inventory is the reason to run inventory again. It must be
+        # visible on the card but cannot reject that refresh operation.
+        eligible = all(item["met"] for item in admission_requirements) and not controller_busy
         # ``controller_busy`` is included in ``eligible`` above, but it is not
         # a domain prerequisite. Rendering it as a requirement made the number
         # of LEDs change while a job moved from running to completed. The step

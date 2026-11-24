@@ -575,6 +575,18 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(queued["selected_path"], "failover")
             self.assertTrue(next(path for path in queued["paths"] if path["id"] == "switchover")["unavailable"])
 
+    def test_expired_inventory_is_visible_but_can_be_refreshed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            snapshot = workflow_snapshot(Path(directory), {
+                "phase": "READY", "inventory_at": time.time() - 3601,
+            })
+        inventory = step_for(snapshot, "inventory")
+        freshness = next(gate for gate in inventory["requirements"] if gate["key"] == "fresh-inventory")
+        self.assertEqual(inventory["status"], "ready")
+        self.assertTrue(inventory["eligible"])
+        self.assertFalse(freshness["met"])
+        self.assertIn("expired", freshness["detail"])
+
     def test_workflow_expired_inventory_blocks_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             snapshot = workflow_snapshot(Path(directory), {
