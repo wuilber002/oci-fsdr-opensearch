@@ -428,6 +428,32 @@ def favicon():
     return Response(content=svg, media_type="image/svg+xml")
 
 
+def automatically_resume_failover(request):
+    """Resume a durable failover when callers can only submit ``failover``.
+
+    External FSDR automation invokes the public job command and cannot be
+    expected to inspect state or attach a one-off ``resume`` parameter.  The
+    transition record is the authority: only a pending failover is resumed.
+    A completed failover is retried only while its reachable former-primary
+    write fence is still missing.
+    """
+    if request.command != "failover" or request.resume:
+        return request
+    configured = _read_json(CONFIG, {})
+    state_dir = Path(request.state_dir or configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+    state = _read_json(state_dir / "state.json", {})
+    transition = state.get("transition") if isinstance(state, dict) else None
+    if not isinstance(transition, dict) or transition.get("mode") != "failover":
+        return request
+    phase = state.get("phase")
+    missing_fence = "fence_source" not in transition.get("steps", [])
+    if phase != "TRANSITION" and not (phase == "SERVICE_RESTORED" and missing_fence):
+        return request
+    data = dump_model(request)
+    data["resume"] = True
+    return OperationRequest(**data)
+
+
 def workflow_gate(request, manager):
     """Reject out-of-order API workflow submissions before a child starts."""
     if request.command not in WORKFLOW_COMMANDS or request.resume:
@@ -450,6 +476,7 @@ def workflow_gate(request, manager):
 
 @app.post("/v1/jobs", status_code=202, dependencies=[Depends(token_auth)])
 def submit(request: OperationRequest):
+    request = automatically_resume_failover(request)
     manager = api_manager()
     try:
         workflow_gate(request, manager)

@@ -117,7 +117,10 @@ explicit fencing attestation::
 
 If the saved inventory is older than one hour, include
 ``use_follower_annotations=true``. The API workflow gate requires this explicit
-confirmation before it accepts the failover request::
+confirmation before it accepts the failover request. A plain ``failover`` job
+also detects a compatible pending failover in durable state and resumes it
+automatically; FSDR automation therefore never needs to construct a separate
+``resume`` request::
 
     api '{"command":"failover","source_fenced":true,"accept_data_loss":true,"use_follower_annotations":true}'
 

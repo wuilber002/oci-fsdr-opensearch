@@ -546,6 +546,57 @@ class ApiTests(unittest.TestCase):
         finally:
             api.JOB_DIRECTORY = original
 
+    def test_api_automatically_resumes_pending_failover_for_plain_command(self):
+        class Manager:
+            def __init__(self):
+                self.requests = []
+
+            def recent(self):
+                return []
+
+            def submit(self, request):
+                self.requests.append(request)
+                return {"id": "resume-job", "status": "queued", "submitted_at": "now"}
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                state_dir = Path(directory) / "state"
+                state_dir.mkdir()
+                (state_dir / "state.json").write_text(json.dumps({
+                    "phase": "SERVICE_RESTORED",
+                    "transition": {"mode": "failover", "steps": ["stop_followers", "enable_target"]},
+                }), encoding="utf-8")
+                config = Path(directory) / "config.json"
+                config.write_text(json.dumps({"state_dir": str(state_dir)}), encoding="utf-8")
+                api.CONFIG = config
+                manager = Manager()
+                with patch.object(api, "api_manager", return_value=manager):
+                    response = api.submit(api.OperationRequest(command="failover"))
+                self.assertEqual(response["id"], "resume-job")
+                self.assertTrue(manager.requests[0].resume)
+                self.assertIn("--resume", api.command_arguments(manager.requests[0]))
+        finally:
+            api.CONFIG = original
+
+    def test_api_does_not_resume_a_completed_fenced_failover(self):
+        request = api.OperationRequest(command="failover")
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                state_dir = Path(directory) / "state"
+                state_dir.mkdir()
+                (state_dir / "state.json").write_text(json.dumps({
+                    "phase": "SERVICE_RESTORED",
+                    "transition": {"mode": "failover", "steps": ["fence_source", "stop_followers", "enable_target"]},
+                }), encoding="utf-8")
+                config = Path(directory) / "config.json"
+                config.write_text(json.dumps({"state_dir": str(state_dir)}), encoding="utf-8")
+                api.CONFIG = config
+                self.assertFalse(api.automatically_resume_failover(request).resume)
+        finally:
+            api.CONFIG = original
+
     def test_workflow_gate_leaves_explicit_resume_to_the_controller(self):
         class Manager:
             def recent(self):
