@@ -83,7 +83,10 @@ install -d -m 0750 "$FSDR_HOME/bin" "$FSDR_HOME/runtime/config" "$FSDR_HOME/runt
 install -m 0755 "$SOURCE_ROOT/scripts/fsdr-job.sh" "$FSDR_HOME/bin/fsdr-job.sh"
 install -m 0755 "$SOURCE_ROOT/scripts/fsdr-build-image.sh" "$FSDR_HOME/bin/fsdr-build-image.sh"
 chown -R 10001:10001 "$FSDR_HOME/runtime"
-chmod 0750 "$FSDR_HOME/runtime" "$FSDR_HOME/runtime/config" "$FSDR_HOME/runtime/state" "$FSDR_HOME/runtime/log"
+# Allow the local operator to execute the helper and read the public CA
+# certificate without granting directory listing or access to secrets/config.
+chmod 0711 "$FSDR_HOME" "$FSDR_HOME/bin" "$FSDR_HOME/runtime" "$FSDR_HOME/runtime/state"
+chmod 0750 "$FSDR_HOME/runtime/config" "$FSDR_HOME/runtime/log"
 
 config="$FSDR_HOME/runtime/config/config.json"
 if [[ ! -e "$config" || "$REPLACE_CONFIG" == true ]]; then

@@ -29,6 +29,7 @@ class PodmanInstallationTests(unittest.TestCase):
         self.assertIn('podman run --rm "${container_options[@]}" "$image" bootstrap', installer)
         self.assertIn("--restart=always", installer)
         self.assertIn('"$FSDR_HOME/runtime/state:/var/lib/oci-opensearch-fsdr:rw,Z"', installer)
+        self.assertIn('chmod 0711 "$FSDR_HOME" "$FSDR_HOME/bin" "$FSDR_HOME/runtime"', installer)
         self.assertNotIn("podman-compose", installer)
 
     def test_update_preserves_configuration_and_state(self):
