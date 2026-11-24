@@ -12,6 +12,7 @@ from .client import clients
 from .cloud import (Cloud, default_state_dir, discover, ocid, pair_identity,
                     read_cache, runtime_config, save_cache)
 from .core import BusyError, Error, LOG, Store, archive, configure_logging, feedback, write_json
+from .evidence import stage_and_publish
 from .operations import (inventory, precheck, reprotect, transition,
                          validate_post_switchover, validate_switchover)
 from .reporting import cleanup, raw_state, record_evidence, record_inventory_attempt, summary
@@ -148,6 +149,9 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
     elapsed = time.monotonic() - started
     report = summary(result, state, args.max_inventory_age_hours * 3600, elapsed, outcome)
     report.update(command=args.command, reason=reason, finished_at=time.time())
+    job_id = os.environ.get("FSDR_API_JOB_ID")
+    if job_id:
+        report["job_id"] = job_id
     if args.command == "inventory":
         record_inventory_attempt(directory, outcome, reason, (state or {}).get("inventory_at"), elapsed)
     with Store({"state_dir": str(directory)}).lock(name="report"):
@@ -155,6 +159,25 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
     archive(directory, "run", report)
     if outcome == "success" and args.command in ("switchover", "failover", "reprotect"):
         record_evidence(directory, args.command, report)
+    if job_id:
+        # The API records its terminal workflow event after this subprocess
+        # returns. It performs the upload then, so the archive contains that
+        # event and the public API job identifier together.
+        report["remote_evidence"] = {"status": "deferred_to_api", "published": [], "pending": 0}
+    else:
+        try:
+            remote = stage_and_publish(directory, args.secret_id, args.evidence_bucket,
+                                       args.evidence_prefix, args.request_timeout, report)
+            report["remote_evidence"] = remote
+        except Exception as exc:
+            # The OpenSearch action is already complete. Preserve its local result
+            # and make the failed delivery visible without redefining the action as
+            # a failed DR operation.
+            LOG.exception("remote_evidence_stage_or_publish_failed command=%s", args.command)
+            report["remote_evidence"] = {"status": "pending", "published": [], "pending": 1,
+                                         "reason": type(exc).__name__}
+    with Store({"state_dir": str(directory)}).lock(name="report"):
+        write_json(Path(directory) / "last-run.json", report)
     if outcome in ("failed", "skipped"):
         try:
             with Store({"state_dir": str(directory)}).lock(blocking=False, name="controller"):

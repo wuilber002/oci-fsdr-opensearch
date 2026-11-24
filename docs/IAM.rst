@@ -26,6 +26,17 @@ Não é necessário conceder manage de rede ou de clusters à VM para esse fluxo
 Conexões OCI devem estar previamente configuradas. Alterá-las pelo SDK seria
 uma funcionalidade diferente com permissões adicionais, ainda não implementada.
 
+Evidência remota para VM efêmera
+--------------------------------
+
+Se ``evidence_bucket`` estiver configurado, acrescente somente a permissão de
+criar e repetir a entrega no bucket privado dedicado::
+
+    Allow dynamic-group fsdr-opensearch-runner-dg to manage objects in compartment id <EVIDENCE_BUCKET_COMPARTMENT_OCID> where all {target.bucket.name = '<EVIDENCE_BUCKET>', target.object.name = 'oci-fsdr-opensearch/*', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_OVERWRITE'}}
+
+Veja ``docs/REMOTE_EVIDENCE.rst`` para o conteúdo exportado, criptografia,
+retenção e o procedimento seguro de retomada.
+
 Configure a VM com acesso ao metadata service, aos endpoints OCI e aos dois
 endpoints privados OpenSearch. O Secret precisa estar disponível durante o DR.
 As políticas para o serviço FSDR acionar Run Command são independentes destas

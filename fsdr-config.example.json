@@ -18,5 +18,7 @@
   "enforce_rpo": false,
   "snapshot_repositories": null,
   "max_snapshot_age_hours": 24,
-  "snapshot_required": false
+  "snapshot_required": false,
+  "evidence_bucket": null,
+  "evidence_prefix": "oci-fsdr-opensearch"
 }

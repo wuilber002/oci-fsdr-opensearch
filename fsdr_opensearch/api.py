@@ -25,7 +25,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from .client import clients
 from .cloud import Cloud, read_cache, runtime_config
-from .core import Error
+from .core import Error, LOG, write_json
+from .evidence import stage_and_publish
 from .workflow import WORKFLOW_COMMANDS, record_event, step_for, workflow_snapshot
 from .web import DASHBOARD_HTML
 
@@ -274,6 +275,40 @@ class JobManager:
             # dashboard/audit projection cannot be written.
             pass
 
+    def _publish_remote_evidence(self, job):
+        """Upload after terminal workflow event persistence, without altering job outcome."""
+        report_path, report = None, None
+        try:
+            request = OperationRequest(**job["request"])
+            configured = _read_json(CONFIG, {})
+            bucket = configured.get("evidence_bucket")
+            if not bucket:
+                return
+            state_dir = Path(request.state_dir or configured.get(
+                "state_dir", "/var/lib/oci-opensearch-fsdr"))
+            report_path = state_dir / "last-run.json"
+            report = _read_json(report_path, {})
+            if report.get("job_id") != job.get("id"):
+                LOG.warning("remote_evidence_skipped reason=report_job_mismatch job_id=%s", job.get("id"))
+                return
+            result = stage_and_publish(
+                state_dir, request.secret_id or configured.get("secret_id"), bucket,
+                configured.get("evidence_prefix", "oci-fsdr-opensearch"),
+                request.request_timeout or configured.get("request_timeout", 20), report)
+            report["remote_evidence"] = result
+            write_json(report_path, report)
+        except Exception as exc:
+            # A completed OpenSearch operation remains complete even when its
+            # secondary durable-evidence delivery has to be retried later.
+            LOG.exception("remote_evidence_api_publish_failed job_id=%s error=%s", job.get("id"), type(exc).__name__)
+            if report_path and isinstance(report, dict):
+                report["remote_evidence"] = {"status": "pending", "published": [], "pending": 1,
+                                             "reason": type(exc).__name__}
+                try:
+                    write_json(report_path, report)
+                except OSError:
+                    LOG.exception("remote_evidence_status_write_failed job_id=%s", job.get("id"))
+
     def _capture_workflow_evidence(self, job):
         """Freeze the gates that admitted a workflow step before it runs.
 
@@ -313,7 +348,8 @@ class JobManager:
                 output = self.output_path(job_id)
                 with output.open("wb") as stream:
                     result = subprocess.run(command_arguments(request), cwd=str(PROJECT), stdout=stream,
-                                            stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONUNBUFFERED="1"),
+                                            stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONUNBUFFERED="1",
+                                                                               FSDR_API_JOB_ID=job_id),
                                             check=False)
                 os.chmod(output, 0o600)
                 job.update(status="succeeded" if result.returncode == 0 else "failed",
@@ -321,6 +357,7 @@ class JobManager:
             except Exception as exc:  # The exception is intentionally not returned to API clients.
                 job.update(status="failed", exit_code=None, finished_at=utc_now(), reason=type(exc).__name__)
             self._record_workflow_outcome(job)
+            self._publish_remote_evidence(job)
             self.write(job)
             self.jobs.task_done()
 

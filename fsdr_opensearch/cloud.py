@@ -166,6 +166,20 @@ class Cloud:
                 "private_ip": data.opensearch_private_ip, "version": data.software_version,
                 "remote_ocids": aliases, "metadata_observed_at": time.time()}
 
+    def object_storage(self, region):
+        """Return an Object Storage client and the tenancy namespace.
+
+        The caller supplies a region derived from the configured Secret OCID,
+        so the ephemeral runner does not need a second region setting.
+        """
+        client = self.sdk.object_storage.ObjectStorageClient(
+            {"region": region}, signer=self.signer, timeout=self.timeout)
+        namespace = self._read("GetNamespace", lambda: client.get_namespace(
+            retry_strategy=self.sdk.retry.NoneRetryStrategy()))
+        if not isinstance(namespace, str) or not namespace:
+            raise Error("OCI Object Storage returned an invalid namespace")
+        return client, namespace
+
 
 def read_cache(directory, secret_id):
     path = Path(directory) / "discovery.json"

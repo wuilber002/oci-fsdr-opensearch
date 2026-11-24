@@ -62,6 +62,7 @@ Documentation
 * `Future multi-follower implementation plan <docs/MULTI_FOLLOWER_PLAN.rst>`_
 * `Instance Principal IAM requirements <docs/IAM.rst>`_
 * ``secret.example.json``: expected Vault Secret payload.
+* ``docs/REMOTE_EVIDENCE.rst``: durable Object Storage evidence for ephemeral FSDR runners.
 
 Scope and safety
 ----------------

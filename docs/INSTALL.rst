@@ -26,6 +26,11 @@ O instalador prepara Podman e as dependências, cria a imagem local e inicia o
 controller. Os arquivos operacionais persistem em
 ``/opt/oci-fsdr-opensearch``; o clone temporário pode ser removido.
 
+Para uma VM efêmera, inclua também ``--evidence-bucket '<BUCKET_PRIVADO>'``.
+O controller envia ao Object Storage os artefatos de recuperação e auditoria
+sem enviar credenciais. Consulte ``docs/REMOTE_EVIDENCE.rst`` antes de apagar
+a VM.
+
 Verificação rápida::
 
     podman ps --filter name=oci-opensearch-fsdr

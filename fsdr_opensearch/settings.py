@@ -15,6 +15,7 @@ DEFAULTS = {
     "max_inventory_age_hours": 4, "retention_days": 30, "service_timeout_seconds": 3600,
     "max_checkpoint_lag": 0, "enforce_rpo": False,
     "snapshot_repositories": None, "max_snapshot_age_hours": 24, "snapshot_required": False,
+    "evidence_bucket": None, "evidence_prefix": "oci-fsdr-opensearch",
 }
 
 
@@ -41,6 +42,8 @@ FIELD_HELP = {
     "snapshot_repositories": "Map of snapshot repositories for clusters a and b.",
     "max_snapshot_age_hours": "Maximum snapshot age in hours accepted by readiness.",
     "snapshot_required": "Requires a recent successful snapshot during readiness.",
+    "evidence_bucket": "Private OCI Object Storage bucket used for durable, credential-free FSDR evidence.",
+    "evidence_prefix": "Object name prefix for immutable FSDR evidence bundles.",
 }
 
 
@@ -88,9 +91,13 @@ def load_settings(path):
             raise Error(f"{field} deve ser true ou false")
     if type(cfg["max_checkpoint_lag"]) is not int or cfg["max_checkpoint_lag"] < 0:
         raise Error("max_checkpoint_lag deve ser inteiro maior ou igual a zero")
-    for field in ("secret_id", "leader_role", "follower_role"):
+    for field in ("secret_id", "leader_role", "follower_role", "evidence_bucket"):
         if cfg[field] is not None and (not isinstance(cfg[field], str) or not cfg[field]):
             raise Error(f"{field} deve ser string não vazia ou null")
+    prefix = cfg["evidence_prefix"]
+    if (not isinstance(prefix, str) or not prefix or prefix.startswith("/") or prefix.endswith("/")
+            or any(part in ("", ".", "..") for part in prefix.split("/"))):
+        raise Error("evidence_prefix deve ser um prefixo de Object Storage relativo e não vazio")
     repositories = cfg["snapshot_repositories"]
     if repositories is not None:
         if not isinstance(repositories, dict) or set(repositories) != {"a", "b"} or any(

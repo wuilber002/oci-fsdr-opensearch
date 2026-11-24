@@ -9,6 +9,8 @@ REPLACE_CONFIG=false
 SKIP_DEPENDENCIES=false
 UPDATE=false
 UNINSTALL=false
+EVIDENCE_BUCKET=""
+EVIDENCE_PREFIX=""
 
 usage() {
   cat <<'USAGE'
@@ -25,6 +27,10 @@ Options:
   --secret-id <ocid>    Required for the first installation. Preserved on update.
   --replace-config      Replace the persistent runtime configuration.
   --skip-dependencies   Do not install Podman and host utilities with dnf.
+  --evidence-bucket <name>
+                       Private OCI Object Storage bucket for durable FSDR evidence.
+  --evidence-prefix <prefix>
+                       Optional Object Storage prefix; default: oci-fsdr-opensearch.
   --update              Rebuild/redeploy while preserving runtime configuration and state.
   --uninstall           Remove this controller, its local image and all persistent FSDR data.
   -h, --help            Show this help.
@@ -38,6 +44,8 @@ while (($#)); do
     --skip-dependencies) SKIP_DEPENDENCIES=true; shift ;;
     --update) UPDATE=true; shift ;;
     --uninstall) UNINSTALL=true; shift ;;
+    --evidence-bucket) EVIDENCE_BUCKET=${2:-}; shift 2 ;;
+    --evidence-prefix) EVIDENCE_PREFIX=${2:-}; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -52,7 +60,7 @@ if [[ "$FSDR_HOME" != "/opt/oci-fsdr-opensearch" ]]; then
   exit 2
 fi
 if [[ "$UNINSTALL" == true ]]; then
-  if [[ -n "$SECRET_ID" || "$REPLACE_CONFIG" == true || "$UPDATE" == true || "$SKIP_DEPENDENCIES" == true ]]; then
+  if [[ -n "$SECRET_ID" || -n "$EVIDENCE_BUCKET" || -n "$EVIDENCE_PREFIX" || "$REPLACE_CONFIG" == true || "$UPDATE" == true || "$SKIP_DEPENDENCIES" == true ]]; then
     echo "--uninstall cannot be combined with installation or update options." >&2
     exit 2
   fi
@@ -77,6 +85,10 @@ if [[ ! -f "$SOURCE_ROOT/Dockerfile" || ! -f "$SOURCE_ROOT/scripts/fsdr-job.sh" 
 fi
 if [[ -n "$SECRET_ID" && ! "$SECRET_ID" =~ ^ocid1\.vaultsecret\.[A-Za-z0-9.-]+$ ]]; then
   echo "Provide a valid Vault Secret OCID with --secret-id." >&2
+  exit 2
+fi
+if [[ -n "$EVIDENCE_PREFIX" && ( "$EVIDENCE_PREFIX" == /* || "$EVIDENCE_PREFIX" == */ || "$EVIDENCE_PREFIX" == *".."* ) ]]; then
+  echo "--evidence-prefix must be a relative Object Storage prefix without '..'." >&2
   exit 2
 fi
 
@@ -140,13 +152,35 @@ if [[ ! -e "$config" || "$REPLACE_CONFIG" == true ]]; then
   "enforce_rpo": false,
   "snapshot_repositories": null,
   "max_snapshot_age_hours": 24,
-  "snapshot_required": false
+  "snapshot_required": false,
+  "evidence_bucket": null,
+  "evidence_prefix": "oci-fsdr-opensearch"
 }
 CONFIG
   chown 10001:10001 "$config"
   chmod 0640 "$config"
 elif [[ -n "$SECRET_ID" ]]; then
   echo "Keeping existing configuration at $config (use --replace-config to change it)." >&2
+fi
+
+if [[ -n "$EVIDENCE_BUCKET" || -n "$EVIDENCE_PREFIX" ]]; then
+  python3 - "$config" "$EVIDENCE_BUCKET" "$EVIDENCE_PREFIX" <<'PY'
+import json
+import sys
+
+path, bucket, prefix = sys.argv[1:]
+with open(path, encoding="utf-8") as source:
+    config = json.load(source)
+if bucket:
+    config["evidence_bucket"] = bucket
+if prefix:
+    config["evidence_prefix"] = prefix
+with open(path, "w", encoding="utf-8") as target:
+    json.dump(config, target, indent=2)
+    target.write("\n")
+PY
+  chown 10001:10001 "$config"
+  chmod 0640 "$config"
 fi
 
 "$FSDR_HOME/bin/fsdr-build-image.sh" "$SOURCE_ROOT"

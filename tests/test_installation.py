@@ -35,6 +35,8 @@ class PodmanInstallationTests(unittest.TestCase):
         self.assertIn('"$FSDR_HOME/runtime/state:/var/lib/oci-opensearch-fsdr:rw,Z"', installer)
         self.assertIn('chmod 0711 "$FSDR_HOME" "$FSDR_HOME/bin" "$FSDR_HOME/runtime"', installer)
         self.assertNotIn("podman-compose", installer)
+        self.assertIn("--evidence-bucket", installer)
+        self.assertIn('"evidence_bucket"', installer)
 
     def test_update_preserves_configuration_and_state(self):
         installer = (ROOT / "scripts/install-podman.sh").read_text()
