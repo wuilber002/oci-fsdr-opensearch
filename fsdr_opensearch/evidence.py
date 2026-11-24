@@ -65,7 +65,7 @@ def _digest(path):
     return digest.hexdigest()
 
 
-def _create_bundle(directory, secret_id, prefix, report):
+def _create_bundle(directory, secret_id, prefix, report, job_log_path=None):
     """Stage one immutable bundle locally before any network call."""
     directory = Path(directory)
     now = time.time()
@@ -91,6 +91,19 @@ def _create_bundle(directory, secret_id, prefix, report):
     files = _artifact_files(directory, report)
     entries = [{"name": name, "sha256": _digest(path), "bytes": path.stat().st_size}
                for name, path in files]
+    controller_log = None
+    if job_log_path:
+        path = Path(job_log_path)
+        if path.is_file() and not path.is_symlink():
+            payload = path.read_bytes()
+            staged_log = base.with_suffix(".controller.log")
+            staged_log.write_bytes(payload)
+            try:
+                staged_log.chmod(0o600)
+            except OSError:
+                pass
+            controller_log = {"name": "controller.log", "sha256": hashlib.sha256(payload).hexdigest(),
+                              "bytes": len(payload), "object": remote_base + "/controller.log"}
     manifest = {
         "schema": SCHEMA,
         "created_at": now,
@@ -103,10 +116,11 @@ def _create_bundle(directory, secret_id, prefix, report):
                            if (directory / "state.json").is_file() else {}).get("transition") or {}).get("id"),
         "remote_base": remote_base,
         "files": entries,
+        "controller_log": controller_log,
         "excluded": [
             "Vault Secret payload and OpenSearch credentials",
             "API bearer token and TLS private key",
-            "raw controller logs and job output",
+            "raw JSONL audit logs; the redacted human controller.log is retained separately",
         ],
     }
     report_bytes = json.dumps(report, indent=2, ensure_ascii=False).encode("utf-8") + b"\n"
@@ -117,6 +131,8 @@ def _create_bundle(directory, secret_id, prefix, report):
         archive.addfile(info, io.BytesIO(report_bytes))
         for name, path in files:
             archive.add(path, arcname=name, recursive=False)
+        if controller_log:
+            archive.add(staged_log, arcname=controller_log["name"], recursive=False)
     try:
         bundle.chmod(0o600)
     except OSError:
@@ -146,16 +162,24 @@ def _publish_one(cloud, region, bucket, manifest_path):
         raise Error("Queued remote-evidence bundle is missing: {}".format(bundle_path.name))
     client, namespace = cloud.object_storage(region)
     base = manifest["remote_base"]
-    payloads = (
+    payloads = [
         (base + "/bundle.tar.gz", bundle_path.read_bytes(), "application/gzip"),
         (base + "/manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False).encode("utf-8") + b"\n",
          "application/json"),
-    )
+    ]
+    controller_log = manifest.get("controller_log")
+    sidecar = manifest_path.with_suffix("").with_suffix(".controller.log")
+    if controller_log:
+        if not sidecar.is_file() or sidecar.is_symlink():
+            raise Error("Queued controller log is missing: {}".format(sidecar.name))
+        payloads.append((controller_log["object"], sidecar.read_bytes(), "text/plain; charset=utf-8"))
     for name, payload, content_type in payloads:
         cloud._read("PutObject", lambda name=name, payload=payload, content_type=content_type: client.put_object(
             namespace, bucket, name, io.BytesIO(payload), content_length=len(payload), content_type=content_type,
             retry_strategy=cloud.sdk.retry.NoneRetryStrategy()))
     bundle_path.unlink()
+    if sidecar.is_file():
+        sidecar.unlink()
     manifest_path.unlink()
     return base
 
@@ -180,13 +204,32 @@ def publish_pending(directory, secret_id, bucket, prefix, timeout):
     return {"status": "published" if not pending else "pending", "published": published, "pending": pending}
 
 
-def stage_and_publish(directory, secret_id, bucket, prefix, timeout, report):
-    """Queue the current evidence, then try the complete outbox.
+def stage_and_publish(directory, secret_id, bucket, prefix, timeout, report, job_log_path=None):
+    """Queue evidence and its readable job log, then try the complete outbox.
 
     Evidence is deliberately not staged without a configured bucket: local
     persistence alone is not suitable for an ephemeral controller VM.
     """
     if not bucket:
-        return {"status": "not_configured", "published": [], "pending": 0}
-    _create_bundle(directory, secret_id, prefix, report)
-    return publish_pending(directory, secret_id, bucket, prefix, timeout)
+        return {"status": "not_configured", "published": [], "pending": 0,
+                "controller_log": None}
+    manifest_path = _create_bundle(directory, secret_id, prefix, report, job_log_path)
+    manifest = _load_manifest(manifest_path)
+    result = publish_pending(directory, secret_id, bucket, prefix, timeout)
+    controller_log = manifest.get("controller_log") or {}
+    result["controller_log"] = controller_log.get("object")
+    return result
+
+
+def download_controller_log(secret_id, bucket, object_name, timeout):
+    """Read one previously uploaded human job log without listing the bucket."""
+    if not isinstance(object_name, str) or not object_name:
+        raise Error("Remote controller log object is invalid")
+    cloud = Cloud(timeout=timeout)
+    client, namespace = cloud.object_storage(cloud.region(secret_id))
+    body = cloud._read("GetObject", lambda: client.get_object(namespace, bucket, object_name,
+                       retry_strategy=cloud.sdk.retry.NoneRetryStrategy()))
+    data = body.read(10_000_001)
+    if len(data) > 10_000_000:
+        raise Error("Remote controller log exceeds the 10 MB retrieval limit")
+    return data

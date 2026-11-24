@@ -27,13 +27,28 @@ hash SHA-256, tamanho e lista dos arquivos. O bundle contém:
 * ``workflow.json`` com a sequência e os gates de cada passo;
 * ``inventory-health.json`` e ``last-run.json``;
 * ``results/<job-id>.json`` com o resultado estruturado daquela execução;
+* ``controller.log`` como arquivo texto separado, com o progresso, as
+  validações, os clusters consultados e o traceback seguro quando houver falha.
+  O mesmo objeto também pode ser lido pela API do controller;
 * ``discovery.json`` com a identidade dos clusters, endpoints e aliases CCR;
 * registros ``history/evidence-*.json`` que fixam os hashes de transições
   concluídas.
 
 O bundle deliberadamente não contém o payload do Vault, senhas OpenSearch,
-token da API local, chave privada TLS, variáveis de ambiente, logs brutos ou
-saída bruta dos jobs. Esses dados não devem ser copiados para o bucket.
+token da API local, chave privada TLS, variáveis de ambiente ou os logs JSONL
+brutos. O ``controller.log`` legível é redigido e publicado tanto dentro do
+bundle quanto como objeto próprio no mesmo diretório da execução, para
+consulta direta sem extrair o arquivo compactado. Esses dados sensíveis nunca
+são copiados para o bucket.
+
+Consulta programática do log
+-----------------------------
+
+Após a entrega, o metadado do job registra o objeto ``controller.log``. A rota
+``GET /v1/jobs/<job-id>/output`` consulta primeiro o arquivo local e, se ele
+não estiver mais disponível, obtém a cópia do Object Storage. A resposta traz
+``X-FSDR-Log-Source: local`` ou ``object-storage``. Assim, um consumidor não
+precisa listar o bucket nem conhecer o caminho do ciclo.
 
 Ciclo único por par de clusters
 -------------------------------
@@ -91,12 +106,14 @@ objeto da evidência. Uma equipe de recuperação separada pode receber ``read
 objects`` para consultar ou copiar os bundles durante uma retomada. Para o
 prefixo acima, use uma policy no compartment do bucket::
 
-    Allow dynamic-group fsdr-opensearch-runner-dg to manage objects in compartment id <EVIDENCE_BUCKET_COMPARTMENT_OCID> where all {target.bucket.name = '<BUCKET_PRIVADO>', target.object.name = 'oci-fsdr-opensearch/*', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_OVERWRITE'}}
+    Allow dynamic-group fsdr-opensearch-runner-dg to manage objects in compartment id <EVIDENCE_BUCKET_COMPARTMENT_OCID> where all {target.bucket.name = '<BUCKET_PRIVADO>', target.object.name = 'oci-fsdr-opensearch/*', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_OVERWRITE', request.permission = 'OBJECT_READ'}}
 
 ``PutObject`` precisa de ``OBJECT_CREATE`` na primeira entrega e
-``OBJECT_OVERWRITE`` numa nova tentativa do mesmo bundle. ``GetNamespace``
-não exige permissão quando solicitado para a tenancy do chamador. Não conceda
-``manage buckets``, leitura ou remoção de objetos ao executor. Em bucket com
+``OBJECT_OVERWRITE`` numa nova tentativa do mesmo bundle. ``OBJECT_READ`` é
+necessário somente para a API recuperar um ``controller.log`` que já não esteja
+mais no filesystem local. ``GetNamespace`` não exige permissão quando solicitado
+para a tenancy do chamador. Não conceda ``manage buckets``, listagem ou remoção
+de objetos ao executor. Em bucket com
 chave KMS gerenciada pelo cliente, conceda também ao serviço Object Storage as
 permissões KMS necessárias para criptografar objetos. Versionamento e retenção
 protegem contra remoção acidental; os bundles FSDR usam nomes únicos e não

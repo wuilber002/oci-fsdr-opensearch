@@ -660,6 +660,35 @@ class ApiTests(unittest.TestCase):
         expired_gate = next(gate for gate in step["requirements"] if gate["key"] == "fresh-inventory")
         self.assertIn("expired", expired_gate["detail"])
 
+    def test_job_log_reads_object_storage_copy_when_local_file_is_missing(self):
+        class Manager:
+            def read(self, job_id):
+                return {"id": job_id, "request": {},
+                        "remote_evidence": {"controller_log": "evidence/cycles/dr/executions/x/controller.log"}}
+
+            def output_path(self, job_id):
+                return Path("/missing") / (job_id + ".log")
+
+        original_manager = getattr(api.app.state, "manager", None)
+        original_config = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                config = Path(directory) / "config.json"
+                config.write_text(json.dumps({"secret_id": "secret", "evidence_bucket": "evidence",
+                                              "request_timeout": 20}), encoding="utf-8")
+                api.CONFIG = config
+                api.app.state.manager = Manager()
+                with patch.object(api, "download_controller_log", return_value=b"remote diagnostic log\n"):
+                    response = api.output("job")
+        finally:
+            api.CONFIG = original_config
+            if original_manager is None:
+                del api.app.state.manager
+            else:
+                api.app.state.manager = original_manager
+        self.assertEqual(response.body, b"remote diagnostic log\n")
+        self.assertEqual(response.headers["x-fsdr-log-source"], "object-storage")
+
     def test_job_result_returns_structured_json_separately_from_log(self):
         class Manager:
             def __init__(self, directory):

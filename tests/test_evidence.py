@@ -100,6 +100,23 @@ class EvidenceTests(unittest.TestCase):
             self.assertIn("results/job123.json", archive.getnames())
             self.assertNotIn("logs/controller.log", archive.getnames())
 
+    @patch("fsdr_opensearch.evidence.Cloud", FakeCloud)
+    def test_publishes_readable_controller_log_as_a_separate_object(self):
+        log = self.directory / "job.log"
+        log.write_text("2026-11-24 INFO validation passed\n", encoding="utf-8")
+        result = stage_and_publish(self.directory, SECRET, "fsdr-evidence", "evidence", 20,
+                                   {"command": "validate-switchover", "outcome": "success"},
+                                   job_log_path=log)
+        self.assertEqual(result["status"], "published")
+        self.assertTrue(result["controller_log"].endswith("/controller.log"))
+        uploads = FakeCloud.instances[-1].uploaded
+        self.assertEqual(len(uploads), 3)
+        log_upload = next(item for item in uploads if item[2].endswith("/controller.log"))
+        self.assertEqual(log_upload[3], b"2026-11-24 INFO validation passed\n")
+        bundle = next(item[3] for item in uploads if item[2].endswith("bundle.tar.gz"))
+        with tarfile.open(fileobj=io.BytesIO(bundle), mode="r:gz") as archive:
+            self.assertIn("controller.log", archive.getnames())
+
     @patch("fsdr_opensearch.evidence.Cloud", FailingCloud)
     def test_keeps_bundle_in_private_outbox_when_upload_fails(self):
         result = stage_and_publish(self.directory, SECRET, "fsdr-evidence", "evidence", 20,

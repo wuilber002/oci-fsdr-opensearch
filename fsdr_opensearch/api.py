@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, model_validator
 from .client import clients
 from .cloud import Cloud, read_cache, runtime_config
 from .core import Error, LOG, write_json
-from .evidence import stage_and_publish
+from .evidence import download_controller_log, stage_and_publish
 from .workflow import (WORKFLOW_COMMANDS, bind_cycle, invalidate_expired_planned_cycle,
                        record_cycle_outcome, record_event, step_for, workflow_snapshot)
 from .web import DASHBOARD_HTML
@@ -319,8 +319,10 @@ class JobManager:
             result = stage_and_publish(
                 state_dir, request.secret_id or configured.get("secret_id"), bucket,
                 configured.get("evidence_prefix", "oci-fsdr-opensearch"),
-                request.request_timeout or configured.get("request_timeout", 20), report)
+                request.request_timeout or configured.get("request_timeout", 20), report,
+                job_log_path=self.output_path(job["id"]))
             report["remote_evidence"] = result
+            job["remote_evidence"] = result
             write_json(report_path, report)
         except Exception as exc:
             # A completed OpenSearch operation remains complete even when its
@@ -614,17 +616,38 @@ def job(job_id: str):
         raise HTTPException(status_code=404, detail="job not found") from None
 
 
+def job_log_bytes(manager, job):
+    """Read the local log first, then the immutable Object Storage copy."""
+    try:
+        return manager.output_path(job["id"]).read_bytes(), "local"
+    except FileNotFoundError:
+        configured = _read_json(CONFIG, {})
+        remote = job.get("remote_evidence") or {}
+        object_name = remote.get("controller_log")
+        bucket = configured.get("evidence_bucket")
+        secret_id = job.get("request", {}).get("secret_id") or configured.get("secret_id")
+        if not (bucket and secret_id and object_name):
+            raise HTTPException(status_code=404, detail="controller log is not available") from None
+        try:
+            data = download_controller_log(secret_id, bucket, object_name,
+                                           configured.get("request_timeout", 20))
+        except Exception as exc:
+            raise HTTPException(status_code=502,
+                                detail="could not retrieve controller log from Object Storage: {}".format(
+                                    type(exc).__name__)) from None
+        return data, "object-storage"
+
+
 @app.get("/v1/jobs/{job_id}/output", dependencies=[Depends(token_auth)])
 def output(job_id: str):
     try:
         manager = api_manager()
-        manager.read(job_id)
-        data = manager.output_path(job_id).read_bytes()
+        job = manager.read(job_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="job not found") from None
-    except FileNotFoundError:
-        data = b""
-    return Response(content=data, media_type="text/plain; charset=utf-8")
+    data, source = job_log_bytes(manager, job)
+    return Response(content=data, media_type="text/plain; charset=utf-8",
+                    headers={"X-FSDR-Log-Source": source})
 
 
 @app.get("/v1/jobs/{job_id}/result", dependencies=[Depends(token_auth)])
@@ -645,13 +668,12 @@ def job_result(job_id: str):
 def dashboard_output(job_id: str):
     try:
         manager = api_manager()
-        manager.read(job_id)
-        data = manager.output_path(job_id).read_bytes()
+        job = manager.read(job_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="job not found") from None
-    except FileNotFoundError:
-        data = b""
-    return Response(content=data, media_type="text/plain; charset=utf-8")
+    data, source = job_log_bytes(manager, job)
+    return Response(content=data, media_type="text/plain; charset=utf-8",
+                    headers={"X-FSDR-Log-Source": source})
 
 
 async def dashboard_output_stream(manager, job_id, offset):
