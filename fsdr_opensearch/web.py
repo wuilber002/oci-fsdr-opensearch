@@ -74,7 +74,7 @@ tr:last-child td{border-bottom:0}
 .number{text-align:right;color:#85efad;font-variant-numeric:tabular-nums}
 .index{font-weight:750;color:#fff}
 .index-label{vertical-align:middle}
-.index-write-lock{display:inline-flex;width:14.4px;height:14.4px;margin:0 5px 0 0;vertical-align:text-bottom;align-items:center;justify-content:center;color:#91a4c3;cursor:help}
+.index-write-lock{display:inline-flex;width:14.4px;height:14.4px;margin:0 5px 0 0;vertical-align:baseline;align-items:center;justify-content:center;color:#91a4c3;cursor:help}
 .index-write-lock svg{display:block;width:14.4px;height:14.4px;overflow:visible;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 0 2.4px currentColor);transform:translateY(2.4px)}
 .index-write-lock.primary{color:#facc15}
 .index-write-lock.follower{color:#d1d5db}
