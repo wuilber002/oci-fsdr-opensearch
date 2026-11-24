@@ -370,6 +370,13 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(inventory["status"], "succeeded")
         self.assertNotIn("controller-idle", [gate["key"] for gate in inventory["requirements"]])
         self.assertTrue(all(gate["met"] for gate in inventory["requirements"]))
+        running_inventory = {"id": "inventory-running", "request": {"command": "inventory"},
+                             "status": "running", "submitted_at": timestamp}
+        running_snapshot = workflow_snapshot(state_dir, {
+            "phase": "PROTECTION_RESTORED", "inventory_at": inventory_at,
+        }, jobs=[running_inventory], now=inventory_at + 60)
+        self.assertEqual(len(step_for(running_snapshot, "inventory")["requirements"]),
+                         len(inventory["requirements"]))
 
     def test_completed_step_preserves_its_admission_gates_after_transition(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -576,7 +583,8 @@ class ApiTests(unittest.TestCase):
         step = step_for(snapshot, "validate-switchover")
         self.assertEqual(step["status"], "waiting")
         self.assertFalse(step["eligible"])
-        self.assertIn("expired", step["requirements"][1]["detail"])
+        expired_gate = next(gate for gate in step["requirements"] if gate["key"] == "fresh-inventory")
+        self.assertIn("expired", expired_gate["detail"])
 
     def test_dashboard_job_log_stream_sends_output_then_end(self):
         class Manager:

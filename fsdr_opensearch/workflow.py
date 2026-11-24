@@ -293,22 +293,11 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
             latest = recorded_inventory
         frozen_requirements = (latest or {}).get("requirements")
         eligible = all(item["met"] for item in requirements) and not controller_busy
-        completed = bool(latest and latest.get("status") == "succeeded")
-        if completed and not active:
-            # Controller occupancy is an admission gate, not historical evidence.
-            # Do not add it to a completed card while a later step is running.
-            pass
-        elif controller_busy and not active:
-            requirements.insert(0, _requirement("controller-idle", False,
-                "Another FSDR workflow step is queued or running.",
-                "FSDR serializes disruptive actions so two jobs cannot modify roles, write blocks or CCR configuration at the same time."))
-        elif active:
-            requirements.insert(0, _requirement("controller-idle", True,
-                "This workflow step is currently {}.".format(active.get("status")),
-                "The controller owns this operation and will publish its terminal outcome before another workflow action is accepted."))
-        else:
-            requirements.insert(0, _requirement("controller-idle", True, "No workflow step is running.",
-                "The controller is free to start the next eligible workflow action."))
+        # ``controller_busy`` is included in ``eligible`` above, but it is not
+        # a domain prerequisite. Rendering it as a requirement made the number
+        # of LEDs change while a job moved from running to completed. The step
+        # status already communicates controller ownership, so keep the visible
+        # gate list limited to durable, command-specific requirements.
         if active:
             status, detail = ("running" if active.get("status") == "running" else "queued",
                               "This step is currently {}.".format(active.get("status")))
