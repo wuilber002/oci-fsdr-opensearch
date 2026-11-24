@@ -5,13 +5,14 @@ All operations are submitted to the local HTTPS API. They are serialized: only
 one controller command is executed at a time. The web console shows the job
 state and its captured output while it runs.
 
-For an external FSDR orchestrator, prefer ``scripts/fsdr-job.sh`` over a raw
+For an external FSDR orchestrator, prefer
+``/opt/oci-opensearch-fsdr/bin/fsdr-job.sh`` over a raw
 ``POST`` request. The helper waits for the submitted job to finish and returns
 ``0`` only for ``succeeded``; all other terminal states and communication
 errors return non-zero. For example::
 
-    ./scripts/fsdr-job.sh validate-switchover
-    ./scripts/fsdr-job.sh reprotect '{"reprotect_parallelism":2}'
+    /opt/oci-opensearch-fsdr/bin/fsdr-job.sh validate-switchover
+    /opt/oci-opensearch-fsdr/bin/fsdr-job.sh reprotect '{"reprotect_parallelism":2}'
 
 Request format
 --------------
@@ -20,7 +21,7 @@ Use ``POST /v1/jobs`` with a Bearer token. Example helper variables::
 
     export FSDR_TOKEN='<local token>'
     API='https://127.0.0.1:1604'
-    CA='runtime/state/api-secrets/tls.crt'
+    CA='/opt/oci-opensearch-fsdr/runtime/state/api-secrets/tls.crt'
     api() {
       curl --fail-with-body --cacert "$CA" \
         -H "Authorization: Bearer $FSDR_TOKEN" -H 'Content-Type: application/json' \

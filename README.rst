@@ -7,26 +7,29 @@ OpenSearch CCR pair. It uses OCI Instance Principal to read one Vault Secret
 that identifies both clusters and contains their internal OpenSearch
 credentials.
 
-The supported deployment is the Docker Compose service in this repository. It
-exposes a local-only HTTPS API on TCP 1604 and a read-only web console at the
-same address. The web console shows the FSDR phase, primary/follower
+The supported deployment uses Podman and a local-only HTTPS API on TCP 1604.
+Its durable host installation is independent from the Git checkout. The web
+console shows the FSDR phase, primary/follower
 direction, protected indices, current document counts, CCR status, API jobs
 and captured command output.
 
 Quick start
 -----------
 
-On a new executor VM, clone the repository and run the bootstrap script::
+On a new executor VM, clone the repository in any temporary directory and run
+the installer::
 
     sudo dnf install -y git
-    git clone https://github.com/wuilber002/oci-fsdr-opensearch.git /opt/oci-opensearch-fsdr
-    cd /opt/oci-opensearch-fsdr
-    sudo ./scripts/install_container.sh --install-docker --secret-id '<VAULT_SECRET_OCID>'
+    git clone https://github.com/wuilber002/oci-fsdr-opensearch.git /tmp/oci-opensearch-fsdr
+    cd /tmp/oci-opensearch-fsdr
+    sudo ./scripts/install-podman.sh --secret-id '<VAULT_SECRET_OCID>'
+    rm -rf /tmp/oci-opensearch-fsdr
 
 Open ``https://127.0.0.1:1604`` locally on the VM, or through an SSH tunnel.
-The installation creates only ``runtime/`` within the repository checkout. It
-does not create a service account, host Python virtualenv, systemd unit, or
-host-level FSDR configuration under ``/etc`` or ``/var``.
+The installer installs Podman, Python and its required host utilities on
+dnf-based Linux, builds ``localhost/oci-opensearch-fsdr:local``, and stores
+the operational files under ``/opt/oci-opensearch-fsdr``. The clone is used
+only for the image build and can be removed after the command succeeds.
 
 Documentation
 -------------
@@ -46,7 +49,7 @@ and discovered CCR scope differ. API requests for switchover, failover and
 reprotect execute immediately when submitted.
 
 The separate lab/demo setup remains isolated under ``lab/`` and is not part of
-the container image, Docker Compose deployment, runtime volumes or API.
+the controller image, Podman deployment, runtime volumes or API.
 
 Validation
 ----------

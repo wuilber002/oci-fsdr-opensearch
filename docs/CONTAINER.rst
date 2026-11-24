@@ -1,59 +1,89 @@
 Container deployment, API and web console
 =========================================
 
-The repository is deployed as one Docker Compose service named ``fsdr-api``.
-The image contains the FSDR controller and an HTTPS API; the host has no FSDR
-Python runtime, systemd service, virtualenv or configuration directories.
+The deployment is one Podman Compose service named ``fsdr-api``. The image
+contains the FSDR controller and its Python 3.9 runtime. The host keeps only
+Podman, Python for the command-line helper, and the persistent operational
+files under ``/opt/oci-opensearch-fsdr``. It does not use the Git checkout at
+runtime.
 
 Persistent runtime layout
 -------------------------
 
-The bootstrap script creates these paths relative to the repository checkout::
+The installer creates these durable paths on the host::
 
-    runtime/config/config.json       Runtime configuration and Vault Secret OCID
-    runtime/state/                   FSDR state, job records, API token and TLS material
-    runtime/log/                     FSDR JSONL audit logs
+    /opt/oci-opensearch-fsdr/bin/fsdr-job.sh       Local authenticated job helper
+    /opt/oci-opensearch-fsdr/compose.yaml          Podman service definition
+    /opt/oci-opensearch-fsdr/runtime/config/       Runtime configuration and Vault Secret OCID
+    /opt/oci-opensearch-fsdr/runtime/state/        FSDR state, jobs, API token and TLS material
+    /opt/oci-opensearch-fsdr/runtime/log/          FSDR JSONL audit logs
 
-``runtime/`` is deliberately ignored by Git. Back it up according to the DR
-procedure; it contains durable FSDR state and an API credential.
+Back up ``/opt/oci-opensearch-fsdr/runtime`` according to the DR procedure;
+it contains durable FSDR state and an API credential. Do not copy it between
+environments.
 
 Install from the repository
 ---------------------------
 
 The VM must already have OCI Instance Principal configured and network access
-to Vault/OCI APIs and both private OpenSearch endpoints. From a new VM::
+to Vault/OCI APIs and both private OpenSearch endpoints. Clone the repository
+anywhere convenient; it is build input only and can be removed after a
+successful installation::
 
     sudo dnf install -y git
-    git clone https://github.com/wuilber002/oci-fsdr-opensearch.git /opt/oci-opensearch-fsdr
-    cd /opt/oci-opensearch-fsdr
-    sudo ./scripts/install_container.sh --install-docker --secret-id '<VAULT_SECRET_OCID>'
+    git clone https://github.com/wuilber002/oci-fsdr-opensearch.git /tmp/oci-opensearch-fsdr
+    cd /tmp/oci-opensearch-fsdr
+    sudo ./scripts/install-podman.sh --secret-id '<VAULT_SECRET_OCID>'
+    rm -rf /tmp/oci-opensearch-fsdr
 
-The ``--install-docker`` option installs Docker Engine and the Compose plugin
-on a dnf-based Linux VM. Omit it when those components are already available.
-The command builds the image, writes ``runtime/config/config.json``, creates a
-random Bearer token and self-signed local TLS certificate, then starts the
-service.
+The installer installs Podman, Podman Compose, Python, curl, OpenSSL and CA
+certificates on a dnf-based Linux VM. Use ``--skip-dependencies`` only when
+those host commands are already installed. It builds the local image, writes
+``/opt/oci-opensearch-fsdr/runtime/config/config.json``, creates a random
+Bearer token and self-signed local TLS certificate, then starts the service.
 
 For a new VM, run this installer instead of copying a ``runtime`` directory
 from another environment. Each deployment creates its own API token, TLS key,
 discovery cache and job history. The OCI Secret OCID is the only bootstrap
 input; OCI aliases, IAM permissions and network routes must already exist.
 
-The container runs as UID/GID 10001 with a read-only root filesystem. Docker
+The container runs as UID/GID 10001 with a read-only root filesystem. Podman
 host networking is required so OCI Instance Principal, private DNS, routing and
 private OpenSearch endpoints are used exactly as from the executor VM. The API
 binds only to ``127.0.0.1:1604``. Do not expose it directly to an untrusted
 network.
 
+Update an existing installation
+-------------------------------
+
+To update the controller, clone the desired revision into a temporary path and
+run the same installer with ``--update``. It replaces the image, compose file
+and helper scripts, then recreates the container. It deliberately preserves
+``runtime/config``, ``runtime/state`` and ``runtime/log``::
+
+    git clone https://github.com/wuilber002/oci-fsdr-opensearch.git /tmp/oci-opensearch-fsdr-update
+    cd /tmp/oci-opensearch-fsdr-update
+    git checkout <release-or-commit>
+    sudo ./scripts/install-podman.sh --update
+    rm -rf /tmp/oci-opensearch-fsdr-update
+
+Use ``--secret-id`` only on the first installation. Supplying it during an
+update keeps the existing configuration; use ``--replace-config`` together
+with ``--secret-id`` only when intentionally replacing the persistent policy.
+Take a backup of the runtime directory before an update that changes workflow
+or state compatibility.
+
 Configuration and durable state
 -------------------------------
 
-``runtime/config/config.json`` is the persistent bootstrap configuration. It
+``/opt/oci-opensearch-fsdr/runtime/config/config.json`` is the persistent
+bootstrap configuration. It
 contains the Vault Secret OCID and operational policy such as timeouts, RPO
 gates and private-IP use; it never contains OpenSearch passwords. The container
 reads it as UID/GID 10001 and mounts it read-only. Discovery cache, inventory,
 job records, API token and TLS material are durable runtime state under
-``runtime/state``. Keeping the two stores separate prevents an operational job
+``/opt/oci-opensearch-fsdr/runtime/state``. Keeping the two stores separate
+prevents an operational job
 from silently changing its own DR policy.
 
 Web console
@@ -86,10 +116,10 @@ HTTPS API
 ---------
 
 The self-signed CA certificate is persisted at
-``runtime/state/api-secrets/tls.crt``. Use it explicitly with curl::
+``/opt/oci-opensearch-fsdr/runtime/state/api-secrets/tls.crt``. Use it explicitly with curl::
 
     export FSDR_TOKEN='<token obtained locally>'
-    curl --fail-with-body --cacert runtime/state/api-secrets/tls.crt \
+    curl --fail-with-body --cacert /opt/oci-opensearch-fsdr/runtime/state/api-secrets/tls.crt \
       -H "Authorization: Bearer $FSDR_TOKEN" \
       https://127.0.0.1:1604/healthz
 
@@ -99,7 +129,7 @@ access to ``tls.crt``; no API credential becomes readable as a result.
 
 Submit a job. Requests are asynchronous and exactly one job runs at a time::
 
-    curl --fail-with-body --cacert runtime/state/api-secrets/tls.crt \
+    curl --fail-with-body --cacert /opt/oci-opensearch-fsdr/runtime/state/api-secrets/tls.crt \
       -H "Authorization: Bearer $FSDR_TOKEN" -H 'Content-Type: application/json' \
       -d '{"command":"validate-switchover"}' \
       https://127.0.0.1:1604/v1/jobs
@@ -108,8 +138,8 @@ For automation, use the repository helper. It reads the local token safely,
 uses the persisted CA certificate, submits the job, and polls until the job
 reaches a terminal state::
 
-    ./scripts/fsdr-job.sh inventory
-    ./scripts/fsdr-job.sh reprotect '{"reprotect_parallelism":2}'
+    /opt/oci-opensearch-fsdr/bin/fsdr-job.sh inventory
+    /opt/oci-opensearch-fsdr/bin/fsdr-job.sh reprotect '{"reprotect_parallelism":2}'
 
 The helper writes its progress to standard error and prints the final job
 record plus captured controller output to standard output. It exits with
@@ -125,10 +155,10 @@ an external FSDR workflow step.
 To inspect an asynchronously submitted job manually, use its returned job ID
 and captured console output::
 
-    curl --cacert runtime/state/api-secrets/tls.crt \
+    curl --cacert /opt/oci-opensearch-fsdr/runtime/state/api-secrets/tls.crt \
       -H "Authorization: Bearer $FSDR_TOKEN" \
       https://127.0.0.1:1604/v1/jobs/<JOB_ID>
-    curl --cacert runtime/state/api-secrets/tls.crt \
+    curl --cacert /opt/oci-opensearch-fsdr/runtime/state/api-secrets/tls.crt \
       -H "Authorization: Bearer $FSDR_TOKEN" \
       https://127.0.0.1:1604/v1/jobs/<JOB_ID>/output
 
@@ -159,7 +189,8 @@ Periodic inventory
 
 The container itself replaces the old host timer. It reads
 ``inventory_enabled`` and ``inventory_interval_hours`` from
-``runtime/config/config.json`` after every interval, and only submits an
+``/opt/oci-opensearch-fsdr/runtime/config/config.json`` after every interval,
+and only submits an
 inventory job when the API worker is idle. Scheduled inventory is skipped
 while a DR transition owns the controller.
 

@@ -22,7 +22,7 @@ token=$(sudo cat "$root/runtime/state/api-secrets/api-token")
 certificate="$root/runtime/state/api-secrets/tls.crt"
 
 if [[ ! -r "$certificate" ]]; then
-  echo "Cannot read $certificate. Rerun scripts/install_container.sh to repair runtime permissions." >&2
+  echo "Cannot read $certificate. Rerun scripts/install-podman.sh to repair runtime permissions." >&2
   exit 1
 fi
 
