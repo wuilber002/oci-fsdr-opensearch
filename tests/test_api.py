@@ -730,7 +730,7 @@ class ApiTests(unittest.TestCase):
         async def first_event():
             stream = api.dashboard_jobs_stream(Manager(), 0)
             try:
-                return await anext(stream)
+                return await stream.__anext__()
             finally:
                 await stream.aclose()
 
@@ -762,7 +762,7 @@ class ApiTests(unittest.TestCase):
         async def two_events(manager):
             stream = api.dashboard_jobs_stream(manager, 0)
             try:
-                return await anext(stream), await anext(stream)
+                return await stream.__anext__(), await stream.__anext__()
             finally:
                 await stream.aclose()
 
@@ -782,7 +782,7 @@ class ApiTests(unittest.TestCase):
         async def first_event(path):
             stream = api.dashboard_state_stream(path)
             try:
-                return await anext(stream)
+                return await stream.__anext__()
             finally:
                 await stream.aclose()
 
