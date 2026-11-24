@@ -140,9 +140,9 @@ fi
 
 submitted=$(cat "$response_file")
 job_id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$submitted")
-printf 'FSDR job submitted: %s\n' "$job_id" >&2
+# The submitted ID is the sole normal output, suitable for orchestration.
+printf '%s\n' "$job_id"
 
-last_status=''
 while true; do
   job=$(api "https://127.0.0.1:1604/v1/jobs/${job_id}")
   read -r status exit_code < <(python3 -c '
@@ -150,10 +150,6 @@ import json, sys
 job = json.load(sys.stdin)
 print(job.get("status", "unknown"), job.get("exit_code") if job.get("exit_code") is not None else "")
 ' <<<"$job")
-  if [[ "$status" != "$last_status" ]]; then
-    printf 'FSDR job %s: %s\n' "$job_id" "$status" >&2
-    last_status=$status
-  fi
   case "$status" in
     queued|running)
       sleep "$poll_interval"
@@ -167,12 +163,6 @@ print(job.get("status", "unknown"), job.get("exit_code") if job.get("exit_code")
       ;;
   esac
 done
-
-printf 'Controller log for %s:\n' "$job_id"
-api "https://127.0.0.1:1604/v1/jobs/${job_id}/output" || true
-printf '\nStructured result JSON: https://127.0.0.1:1604/v1/jobs/%s/result\n' "$job_id" >&2
-printf 'Local controller result: %s/runtime/state/api-jobs/%s.result.json\n' "$root" "$job_id" >&2
-printf 'Detailed log: %s log %s --debug\n' "$0" "$job_id" >&2
 
 if [[ "$status" == succeeded ]]; then
   exit 0

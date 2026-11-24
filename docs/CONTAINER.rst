@@ -140,21 +140,18 @@ reaches a terminal state::
     /opt/oci-fsdr-opensearch/bin/fsdr-job.sh inventory
     /opt/oci-fsdr-opensearch/bin/fsdr-job.sh reprotect '{"reprotect_parallelism":2}'
 
-The helper writes its own status and the location of the structured result to
-standard error, and prints only the captured controller log to standard
-output. It exits with ``0`` only when the API reports ``succeeded``. The final
-JSON result is stored separately as ``api-jobs/<JOB_ID>.result.json`` and is
-available through ``GET /v1/jobs/<JOB_ID>/result``. Reopen prior output with
+The helper prints only the submitted job ID to standard output, then waits for
+that job to reach a terminal state. It emits no controller log or normal
+progress messages. Its exit code is ``0`` only when the API reports
+``succeeded``; for a failed job it preserves the controller exit code when it
+is between ``1`` and ``125``. Interrupted, invalid, rejected and transport
+failures return a non-zero code. The final JSON result is stored separately as
+``api-jobs/<JOB_ID>.result.json`` and is available through
+``GET /v1/jobs/<JOB_ID>/result``. Inspect a prior log with
 ``fsdr-job.sh log <JOB_ID>`` or its result with ``fsdr-job.sh result <JOB_ID>``.
-The detailed JSONL audit files are retained on the host in
-``/opt/oci-fsdr-opensearch/runtime/log``. For a failed job, it preserves
-the controller exit code when it is between ``1`` and ``125``; interrupted,
-invalid, rejected, and transport failures return a non-zero exit code. When
-the API rejects a request because its workflow prerequisites are not met, the
-helper prints each unmet prerequisite and its explanation. The API also stores
-that rejection as a ``rejected`` audit job, so its reason is available in the
-dashboard history and the selected job log. This makes the helper suitable as
-an external FSDR workflow step.
+When the API rejects a request because workflow prerequisites are not met, the
+helper prints the rejection explanation to standard error. The API also stores
+that rejection as a ``rejected`` audit job for the dashboard and log history.
 
 To inspect an asynchronously submitted job manually, use its returned job ID
 controller log and structured result::
