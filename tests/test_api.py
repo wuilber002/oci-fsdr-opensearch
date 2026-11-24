@@ -97,6 +97,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("grid-template-columns:repeat(8,minmax(0,1fr))", api.DASHBOARD_HTML)
         self.assertIn("Replication health", api.DASHBOARD_HTML)
         self.assertIn("Inventory schedule", api.DASHBOARD_HTML)
+        self.assertIn("mon.workflow?.inventory?.age_seconds", api.DASHBOARD_HTML)
+        self.assertNotIn("mon.workflow?.inventory_age_seconds", api.DASHBOARD_HTML)
         self.assertIn("Protection status", api.DASHBOARD_HTML)
         self.assertIn("Recovery point", api.DASHBOARD_HTML)
         self.assertIn("Cluster health", api.DASHBOARD_HTML)
