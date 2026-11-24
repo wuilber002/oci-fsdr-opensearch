@@ -107,6 +107,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn("function stateLabel", api.DASHBOARD_HTML)
         self.assertIn("function summaryCard", api.DASHBOARD_HTML)
         self.assertIn("summary-card", api.DASHBOARD_HTML)
+        self.assertIn("SUMMARY_CARD_TEMPLATE", api.DASHBOARD_HTML)
+        self.assertIn("summary-card-value", api.DASHBOARD_HTML)
         self.assertIn("Recovery paths", api.DASHBOARD_HTML)
         self.assertIn("renderRecoveryPaths", api.DASHBOARD_HTML)
         self.assertIn("drawRecoveryConnectors", api.DASHBOARD_HTML)
