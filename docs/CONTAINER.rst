@@ -150,8 +150,10 @@ failures return a non-zero code. The final JSON result is stored separately as
 ``GET /v1/jobs/<JOB_ID>/result``. Inspect a prior log with
 ``fsdr-job.sh log <JOB_ID>`` or its result with ``fsdr-job.sh result <JOB_ID>``.
 When the API rejects a request because workflow prerequisites are not met, the
-helper prints the rejection explanation to standard error. The API also stores
-that rejection as a ``rejected`` audit job for the dashboard and log history.
+helper prints the persisted rejected job ID to standard output and exits with
+status ``1``. Its complete explanation is available through
+``fsdr-job.sh log <JOB_ID>`` or the dashboard. The API also stores that
+rejection as a ``rejected`` audit job for history.
 
 To inspect an asynchronously submitted job manually, use its returned job ID
 controller log and structured result::

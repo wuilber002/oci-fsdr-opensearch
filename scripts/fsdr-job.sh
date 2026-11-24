@@ -91,6 +91,25 @@ http_status=$(curl --silent --show-error --output "$response_file" --write-out '
 }
 
 if [[ "$http_status" != "202" ]]; then
+  # A workflow rejection is persisted as a job so the dashboard/API can show
+  # its complete explanation. Keep this helper automation-friendly: emit only
+  # that ID and return a failing status.
+  if [[ "$http_status" == "409" ]]; then
+    python3 - "$response_file" <<'PY'
+import json
+import sys
+
+try:
+    detail = json.load(open(sys.argv[1], encoding="utf-8")).get("detail", {})
+except (OSError, ValueError):
+    detail = {}
+if isinstance(detail, dict) and detail.get("code") == "workflow_prerequisites_unmet":
+    job_id = detail.get("job_id")
+    if isinstance(job_id, str):
+        print(job_id)
+PY
+    exit 1
+  fi
   python3 - "$http_status" "$response_file" <<'PY' >&2
 import json
 import sys
@@ -105,40 +124,8 @@ if not isinstance(detail, dict):
     print("FSDR job request failed (HTTP {}): {}".format(http_status, detail or "no response body"))
     raise SystemExit()
 
-if http_status == "409" and detail.get("code") == "workflow_prerequisites_unmet":
-    print("FSDR job rejected before execution: {}.".format(detail.get("command", "requested command")))
-    unmet = [item for item in detail.get("requirements", []) if not item.get("met")]
-    primary_reason = ((unmet[0].get("detail") or unmet[0].get("key"))
-                      if unmet else "workflow prerequisites are not satisfied")
-    print("Reason: {}.".format(primary_reason.rstrip(".")))
-    job_id = detail.get("job_id")
-    if job_id:
-        print("Recorded in dashboard history as rejected job: {}.".format(job_id))
-    inventory = detail.get("inventory") or {}
-    age = inventory.get("age_seconds")
-    maximum = inventory.get("max_age_seconds")
-    if isinstance(age, (int, float)) and isinstance(maximum, (int, float)):
-        def duration(seconds):
-            minutes = max(0, int(seconds) // 60)
-            hours, minutes = divmod(minutes, 60)
-            return (f"{hours}h {minutes}m" if hours else f"{minutes}m")
-        print("Inventory age: {} (limit {}; {}).".format(
-            duration(age), duration(maximum),
-            "valid" if inventory.get("fresh") else "expired"))
-    elif inventory.get("detail"):
-        print("Inventory: {}".format(inventory["detail"]))
-    if unmet:
-        print("Unmet requirements:")
-        for item in unmet:
-            print("- {}".format(item.get("detail") or item.get("key") or "Requirement not satisfied"))
-            if item.get("explanation"):
-                print("  {}".format(item["explanation"]))
-    recommended = detail.get("recommended_next_step") or {}
-    if recommended.get("label"):
-        print("Next eligible step: {}.".format(recommended["label"]))
-else:
-    message = detail.get("message") or detail.get("code") or "request rejected"
-    print("FSDR job request failed (HTTP {}): {}".format(http_status, message))
+message = detail.get("message") or detail.get("code") or "request rejected"
+print("FSDR job request failed (HTTP {}): {}".format(http_status, message))
 PY
   exit 1
 fi
