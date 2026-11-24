@@ -293,7 +293,12 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
             latest = recorded_inventory
         frozen_requirements = (latest or {}).get("requirements")
         eligible = all(item["met"] for item in requirements) and not controller_busy
-        if controller_busy and not active:
+        completed = bool(latest and latest.get("status") == "succeeded")
+        if completed and not active:
+            # Controller occupancy is an admission gate, not historical evidence.
+            # Do not add it to a completed card while a later step is running.
+            pass
+        elif controller_busy and not active:
             requirements.insert(0, _requirement("controller-idle", False,
                 "Another FSDR workflow step is queued or running.",
                 "FSDR serializes disruptive actions so two jobs cannot modify roles, write blocks or CCR configuration at the same time."))

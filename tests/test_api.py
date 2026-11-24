@@ -343,6 +343,34 @@ class ApiTests(unittest.TestCase):
             }, now=inventory_at + 600)
             self.assertEqual(snapshot["inventory_at"], inventory_at)
 
+    def test_completed_inventory_does_not_lose_a_gate_while_validation_runs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state_dir = Path(directory)
+            inventory_at = 2_000_000_000
+            timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(inventory_at))
+            record_event(state_dir, {
+                "id": "inventory-success", "request": {"command": "inventory"},
+                "status": "succeeded", "submitted_at": timestamp,
+                "started_at": timestamp, "finished_at": timestamp, "exit_code": 0,
+                "workflow_evidence": {"requirements": [{
+                    "key": "stable-state", "met": True, "detail": "FSDR was READY.",
+                    "explanation": "The step was admitted from a stable state.", "level": "waiting",
+                }]},
+            }, {"phase": "PROTECTION_RESTORED", "inventory_at": inventory_at})
+            validation = {"id": "validation-running", "request": {"command": "validate-switchover"},
+                          "status": "running", "submitted_at": timestamp,
+                          "workflow_evidence": {"requirements": [{
+                              "key": "fresh-inventory", "met": True, "detail": "Inventory is fresh.",
+                              "explanation": "A fresh inventory is required.", "level": "waiting",
+                          }]}}
+            snapshot = workflow_snapshot(state_dir, {
+                "phase": "PROTECTION_RESTORED", "inventory_at": inventory_at,
+            }, jobs=[validation], now=inventory_at + 60)
+            inventory = step_for(snapshot, "inventory")
+        self.assertEqual(inventory["status"], "succeeded")
+        self.assertNotIn("controller-idle", [gate["key"] for gate in inventory["requirements"]])
+        self.assertTrue(all(gate["met"] for gate in inventory["requirements"]))
+
     def test_completed_step_preserves_its_admission_gates_after_transition(self):
         with tempfile.TemporaryDirectory() as directory:
             state_dir = Path(directory)
