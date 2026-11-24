@@ -55,6 +55,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("/dashboard/v1/events", api.DASHBOARD_HTML)
         self.assertNotIn("/dashboard/v1/monitor", api.DASHBOARD_HTML)
         self.assertIn("Controller job", api.DASHBOARD_HTML)
+        self.assertIn('<link rel="icon" type="image/png" href="/assets/fsdr-logo.png">', api.DASHBOARD_HTML)
         self.assertIn("Replicated indices comparison", api.DASHBOARD_HTML)
         self.assertIn("top-nav", api.DASHBOARD_HTML)
         self.assertIn("job-grid", api.DASHBOARD_HTML)

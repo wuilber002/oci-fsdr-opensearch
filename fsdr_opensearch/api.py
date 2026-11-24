@@ -420,12 +420,8 @@ def dashboard_logo():
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
-    """Small embedded icon so normal browser navigation does not produce 404s."""
-    svg = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
-           "<rect width='64' height='64' rx='14' fill='#45d5e8'/>"
-           "<path d='M18 22h28v20H18z' fill='#0b1120'/><path d='M25 15v34M39 15v34' "
-           "stroke='#0b1120' stroke-width='5'/></svg>")
-    return Response(content=svg, media_type="image/svg+xml")
+    """Serve the same shield mark for browsers that request /favicon.ico."""
+    return FileResponse(STATIC_DIRECTORY / "fsdr-logo.png", media_type="image/png")
 
 
 def automatically_resume_failover(request):

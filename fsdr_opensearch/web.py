@@ -6,6 +6,7 @@ DASHBOARD_HTML = r'''<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>OpenSearch FSDR</title>
+<link rel="icon" type="image/png" href="/assets/fsdr-logo.png">
 <style>
 :root{color-scheme:dark;--bg:#0b1120;--surface:#141e30;--line:#2b3e5e;--text:#e9eef8;--muted:#91a4c3;--blue:#60a5fa;--green:#4ade80;--orange:#fb923c;--red:#f87171;--pink:#f472d0;--radius:12px}
 *{box-sizing:border-box}
