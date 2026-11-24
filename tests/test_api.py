@@ -208,7 +208,7 @@ class ApiTests(unittest.TestCase):
             self.assertFalse(any(path["unavailable"] for path in snapshot["paths"]))
             self.assertEqual(len(snapshot["events"]), 5)
 
-    def test_reprotect_keeps_completed_path_visible_for_ten_seconds(self):
+    def test_reprotect_keeps_completed_path_visible_for_thirty_seconds(self):
         with tempfile.TemporaryDirectory() as directory:
             state_dir = Path(directory)
             finished_at = 2_000_000_000
@@ -230,9 +230,9 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(step_for(pending, "reprotect")["status"], "succeeded")
             self.assertEqual(pending["selected_path"], "switchover")
             self.assertFalse(pending["paths_resettable"])
-            self.assertEqual(pending["cycle_reset_pending_until"], finished_at + 10)
+            self.assertEqual(pending["cycle_reset_pending_until"], finished_at + 30)
 
-            reset = workflow_snapshot(state_dir, state, now=finished_at + 10.1)
+            reset = workflow_snapshot(state_dir, state, now=finished_at + 30.1)
             self.assertEqual(step_for(reset, "inventory")["status"], "succeeded")
             self.assertIsNone(reset["selected_path"])
             self.assertTrue(reset["paths_resettable"])
