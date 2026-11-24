@@ -101,23 +101,11 @@ em repouso do Object Storage; quando exigido, configure uma chave Vault/KMS
 como chave de criptografia padrão do bucket. Mantenha o acesso pela rede
 privada (Service Gateway ou Private Endpoint quando aplicável).
 
-O Dynamic Group da VM deve ter somente permissão de criar ou sobrescrever o
-objeto da evidência. Uma equipe de recuperação separada pode receber ``read
-objects`` para consultar ou copiar os bundles durante uma retomada. Para o
-prefixo acima, use uma policy no compartment do bucket::
-
-    Allow dynamic-group fsdr-opensearch-runner-dg to manage objects in compartment id <EVIDENCE_BUCKET_COMPARTMENT_OCID> where all {target.bucket.name = '<BUCKET_PRIVADO>', target.object.name = 'oci-fsdr-opensearch/*', any {request.permission = 'OBJECT_CREATE', request.permission = 'OBJECT_OVERWRITE', request.permission = 'OBJECT_READ'}}
-
-``PutObject`` precisa de ``OBJECT_CREATE`` na primeira entrega e
-``OBJECT_OVERWRITE`` numa nova tentativa do mesmo bundle. ``OBJECT_READ`` é
-necessário somente para a API recuperar um ``controller.log`` que já não esteja
-mais no filesystem local. ``GetNamespace`` não exige permissão quando solicitado
-para a tenancy do chamador. Não conceda ``manage buckets``, listagem ou remoção
-de objetos ao executor. Em bucket com
-chave KMS gerenciada pelo cliente, conceda também ao serviço Object Storage as
-permissões KMS necessárias para criptografar objetos. Versionamento e retenção
-protegem contra remoção acidental; os bundles FSDR usam nomes únicos e não
-substituem uma execução anterior.
+As permissões IAM do executor, o motivo de cada statement e a relação com os
+componentes do controller estão consolidados em ``docs/IAM.rst``. Em especial,
+a API que recupera ``controller.log`` do bucket exige ``OBJECT_READ`` além de
+``OBJECT_CREATE`` e ``OBJECT_OVERWRITE``. Não conceda ``manage buckets``,
+listagem ou remoção de objetos ao executor.
 
 Retomada em outra VM
 --------------------
