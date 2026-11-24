@@ -12,7 +12,7 @@ from pathlib import Path
 import time
 from typing import Any, Iterable
 
-from .core import write_json
+from .core import Store, write_json
 
 
 WORKFLOW_STEPS = (
@@ -36,6 +36,8 @@ STABLE_PHASES = {"READY", "PROTECTION_RESTORED"}
 INVENTORY_MAX_AGE_SECONDS = 60 * 60
 RECOVERY_CYCLE_RESET_DELAY_SECONDS = 30
 LEDGER_FILE = "workflow.json"
+CYCLE_FILE = "dr-cycle.json"
+CYCLE_START_COMMANDS = {"inventory", "validate-switchover", "failover"}
 
 
 def _epoch(value: Any) -> float | None:
@@ -50,6 +52,111 @@ def _epoch(value: Any) -> float | None:
 
 def _ledger_path(state_dir: Path) -> Path:
     return Path(state_dir) / LEDGER_FILE
+
+
+def _cycle_path(state_dir: Path) -> Path:
+    return Path(state_dir) / CYCLE_FILE
+
+
+def read_cycle(state_dir: Path) -> dict[str, Any] | None:
+    """Read the one durable DR cycle for this controller state directory."""
+    try:
+        import json
+        cycle = json.loads(_cycle_path(state_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if not isinstance(cycle, dict) or cycle.get("schema") != 1 or not isinstance(cycle.get("id"), str):
+        return None
+    return cycle
+
+
+def _cycle_id(submitted_at: str, job_id: str) -> str:
+    parsed = _epoch(submitted_at) or time.time()
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(parsed))
+    return "dr-{}-{}".format(stamp, job_id[:12])
+
+
+def invalidate_expired_planned_cycle(state_dir: Path, state: dict[str, Any] | None,
+                                     now: float | None = None) -> dict[str, Any] | None:
+    """Close only a pre-switchover planned cycle whose admitted inventory expired."""
+    now = time.time() if now is None else now
+    with Store({"state_dir": str(state_dir)}).lock(name="cycle"):
+        cycle = read_cycle(state_dir)
+        if not cycle or cycle.get("status") != "active" or cycle.get("route") != "switchover":
+            return cycle
+        expires_at = cycle.get("inventory_expires_at")
+        phase = (state or {}).get("phase")
+        if isinstance(expires_at, (int, float)) and now > expires_at and phase in STABLE_PHASES:
+            cycle.update(status="invalidated", invalidated_at=now,
+                         invalidation_reason="inventory_expired_before_switchover")
+            write_json(_cycle_path(state_dir), cycle)
+        return cycle
+
+
+def bind_cycle(state_dir: Path, state: dict[str, Any] | None, job: dict[str, Any]) -> dict[str, Any] | None:
+    """Attach an accepted job to the active cycle, or create its first cycle.
+
+    Scheduler inventory is evidence only: it never opens or refreshes a DR
+    cycle. A planned cycle is invalidated before a later scheduled inventory
+    can make an expired admission look fresh again.
+    """
+    request = job.get("request") or {}
+    command = request.get("command")
+    if command not in WORKFLOW_COMMANDS:
+        return None
+    state_dir = Path(state_dir)
+    invalidate_expired_planned_cycle(state_dir, state)
+    if request.get("scheduled") is True:
+        return None
+    with Store({"state_dir": str(state_dir)}).lock(name="cycle"):
+        cycle = read_cycle(state_dir)
+        if cycle and cycle.get("status") == "active":
+            # An emergency failover may supersede preparation that has not yet
+            # moved writes. It remains the same audit/recovery cycle.
+            if command == "failover" and cycle.get("route") != "failover":
+                cycle.update(route="failover", route_changed_at=time.time(), route_changed_by=job.get("id"))
+                write_json(_cycle_path(state_dir), cycle)
+            return cycle
+        if command not in CYCLE_START_COMMANDS:
+            return None
+        route = "failover" if command == "failover" else "switchover"
+        inventory_at = (state or {}).get("inventory_at")
+        cycle = {
+            "schema": 1,
+            "id": _cycle_id(str(job.get("submitted_at") or ""), str(job.get("id") or "")),
+            "status": "active",
+            "route": route,
+            "started_at": job.get("submitted_at"),
+            "started_by": command,
+            "start_job_id": job.get("id"),
+            "inventory_at": inventory_at if isinstance(inventory_at, (int, float)) else None,
+            "inventory_expires_at": (inventory_at + INVENTORY_MAX_AGE_SECONDS
+                                      if isinstance(inventory_at, (int, float)) and route == "switchover" else None),
+        }
+        write_json(_cycle_path(state_dir), cycle)
+        return cycle
+
+
+def record_cycle_outcome(state_dir: Path, job: dict[str, Any], state: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Advance the active cycle only from a terminal job that belongs to it."""
+    cycle_id = job.get("cycle_id")
+    if not isinstance(cycle_id, str):
+        return None
+    with Store({"state_dir": str(state_dir)}).lock(name="cycle"):
+        cycle = read_cycle(state_dir)
+        if not cycle or cycle.get("id") != cycle_id or cycle.get("status") != "active":
+            return cycle
+        command = (job.get("request") or {}).get("command")
+        if command == "inventory" and job.get("status") == "succeeded":
+            inventory_at = (state or {}).get("inventory_at")
+            if isinstance(inventory_at, (int, float)) and cycle.get("route") == "switchover":
+                cycle.update(inventory_at=inventory_at,
+                             inventory_expires_at=inventory_at + INVENTORY_MAX_AGE_SECONDS)
+        if command == "reprotect" and job.get("status") == "succeeded":
+            cycle.update(status="completed", completed_at=job.get("finished_at"),
+                         completed_by=job.get("id"))
+        write_json(_cycle_path(state_dir), cycle)
+        return cycle
 
 
 def read_ledger(state_dir: Path) -> dict[str, Any]:
@@ -71,6 +178,7 @@ def record_event(state_dir: Path, job: dict[str, Any], state: dict[str, Any] | N
     ledger = read_ledger(state_dir)
     event = {
         "job_id": job.get("id"), "command": command, "status": job.get("status"),
+        "cycle_id": job.get("cycle_id"),
         "submitted_at": job.get("submitted_at"), "started_at": job.get("started_at"),
         "finished_at": job.get("finished_at"), "exit_code": job.get("exit_code"),
         "reason": job.get("reason"), "phase": (state or {}).get("phase"),
@@ -368,7 +476,7 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
               "unavailable": bool(selected_path and path["id"] in {"switchover", "failover"}
                                   and path["id"] != selected_path)}
              for path in RECOVERY_PATHS]
-    return {"phase": phase, "inventory_max_age_seconds": INVENTORY_MAX_AGE_SECONDS,
+    return {"phase": phase, "cycle": read_cycle(state_dir), "inventory_max_age_seconds": INVENTORY_MAX_AGE_SECONDS,
             "inventory_at": inventory_at,
             "inventory": {
                 "collected_at": inventory_at,

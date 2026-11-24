@@ -52,6 +52,9 @@ class EvidenceTests(unittest.TestCase):
             "schema": 2, "identity": "pair-identity", "phase": "SERVICE_RESTORED",
             "active": "b", "transition": {"id": "transition-1"}, "indices": [],
         })
+        write_json(self.directory / "dr-cycle.json", {
+            "schema": 1, "id": "dr-20261124T020415Z-job123", "status": "active", "route": "switchover",
+        })
         write_json(self.directory / "workflow.json", {"schema": 1, "events": []})
         write_json(self.directory / "discovery.json", {"schema": 1, "clusters": {}})
         write_json(self.directory / "inventory-health.json", {"outcome": "success"})
@@ -71,11 +74,12 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(result["pending"], 0)
         uploads = FakeCloud.instances[-1].uploaded
         self.assertEqual(len(uploads), 2)
-        self.assertTrue(all("/executions/" in item[2] for item in uploads))
+        self.assertTrue(all("/cycles/dr-20261124T020415Z-job123/executions/" in item[2] for item in uploads))
         bundle = next(item[3] for item in uploads if item[2].endswith("bundle.tar.gz"))
         with tarfile.open(fileobj=io.BytesIO(bundle), mode="r:gz") as archive:
             names = archive.getnames()
         self.assertIn("state.json", names)
+        self.assertIn("dr-cycle.json", names)
         self.assertIn("workflow.json", names)
         self.assertIn("history/evidence-prior.json", names)
         self.assertNotIn("api-secrets/api-token", names)
@@ -96,6 +100,14 @@ class EvidenceTests(unittest.TestCase):
                                    {"command": "inventory", "outcome": "success"})
         self.assertEqual(result["status"], "not_configured")
         self.assertFalse((self.directory / "evidence-outbox").exists())
+
+    @patch("fsdr_opensearch.evidence.Cloud", FakeCloud)
+    def test_inventory_maintenance_evidence_is_not_misclassified_as_a_dr_cycle(self):
+        (self.directory / "dr-cycle.json").unlink()
+        result = stage_and_publish(self.directory, SECRET, "fsdr-evidence", "evidence", 20,
+                                   {"command": "inventory", "outcome": "success"})
+        self.assertEqual(result["status"], "published")
+        self.assertIn("/maintenance/", FakeCloud.instances[-1].uploaded[0][2])
 
 
 if __name__ == "__main__":

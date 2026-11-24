@@ -64,6 +64,10 @@ Documentation
 * ``secret.example.json``: expected Vault Secret payload.
 * ``docs/REMOTE_EVIDENCE.rst``: durable Object Storage evidence for ephemeral FSDR runners.
 
+Cada operação de recuperação recebe um ciclo único, persistido localmente e
+no Object Storage até ``reprotect`` concluir. Inventário agendado somente
+mantém a evidência de início e não abre um ciclo de DR.
+
 Scope and safety
 ----------------
 

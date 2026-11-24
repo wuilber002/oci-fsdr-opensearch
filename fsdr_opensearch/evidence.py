@@ -19,7 +19,7 @@ from .core import Error, LOG, write_json
 
 SCHEMA = 1
 OUTBOX = "evidence-outbox"
-CURRENT_FILES = ("state.json", "workflow.json", "discovery.json", "inventory-health.json", "last-run.json")
+CURRENT_FILES = ("state.json", "dr-cycle.json", "workflow.json", "discovery.json", "inventory-health.json", "last-run.json")
 
 
 def _identity(directory, secret_id):
@@ -65,7 +65,17 @@ def _create_bundle(directory, secret_id, prefix, report):
     execution_id = uuid.uuid4().hex
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now))
     identity = _identity(directory, secret_id)
-    remote_base = "{}/{}/executions/{}-{}".format(prefix, identity, stamp, execution_id)
+    try:
+        cycle = json.loads((directory / "dr-cycle.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        cycle = {}
+    cycle_id = report.get("cycle_id") or cycle.get("id")
+    if isinstance(cycle_id, str) and cycle_id:
+        remote_base = "{}/cycles/{}/executions/{}-{}".format(prefix, cycle_id, stamp, execution_id)
+    else:
+        # Scheduled inventory remains durable operational evidence, but never
+        # starts or impersonates a recovery cycle.
+        remote_base = "{}/maintenance/{}/executions/{}-{}".format(prefix, identity, stamp, execution_id)
     outbox = directory / OUTBOX
     outbox.mkdir(mode=0o700, parents=True, exist_ok=True)
     base = outbox / (stamp + "-" + execution_id)
@@ -78,6 +88,8 @@ def _create_bundle(directory, secret_id, prefix, report):
         "schema": SCHEMA,
         "created_at": now,
         "identity": identity,
+        "cycle_id": cycle_id if isinstance(cycle_id, str) else None,
+        "cycle_status": cycle.get("status") if isinstance(cycle, dict) else None,
         "command": report.get("command"),
         "outcome": report.get("outcome"),
         "transition_id": ((json.loads((directory / "state.json").read_text(encoding="utf-8"))

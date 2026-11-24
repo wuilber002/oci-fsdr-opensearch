@@ -27,7 +27,8 @@ from .client import clients
 from .cloud import Cloud, read_cache, runtime_config
 from .core import Error, LOG, write_json
 from .evidence import stage_and_publish
-from .workflow import WORKFLOW_COMMANDS, record_event, step_for, workflow_snapshot
+from .workflow import (WORKFLOW_COMMANDS, bind_cycle, invalidate_expired_planned_cycle,
+                       record_cycle_outcome, record_event, step_for, workflow_snapshot)
 from .web import DASHBOARD_HTML
 
 
@@ -175,6 +176,11 @@ class JobManager:
         job = {"id": job_id, "submitted_at": utc_now(), "started_at": None, "finished_at": None,
                "status": "queued", "exit_code": None, "request": dump_model(request),
                "output": self.output_path(job_id).name}
+        configured = _read_json(CONFIG, {})
+        state_dir = Path(request.state_dir or configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+        cycle = bind_cycle(state_dir, _read_json(state_dir / "state.json", {}), job)
+        if cycle:
+            job["cycle_id"] = cycle["id"]
         self.write(job)
         self.jobs.put(job_id)
         return job
@@ -269,10 +275,23 @@ class JobManager:
             configured = _read_json(CONFIG, {})
             state_dir = Path(request.state_dir or configured.get(
                 "state_dir", "/var/lib/oci-opensearch-fsdr"))
-            record_event(state_dir, job, _read_json(state_dir / "state.json", {}))
+            state = _read_json(state_dir / "state.json", {})
         except Exception:
             # The operation outcome remains authoritative even if its secondary
             # dashboard/audit projection cannot be written.
+            return
+        try:
+            record_event(state_dir, job, state)
+        except Exception:
+            # The cycle record is independent from the dashboard ledger. A
+            # transient ledger failure must not leave a completed reprotect
+            # cycle permanently active.
+            pass
+        try:
+            record_cycle_outcome(state_dir, job, state)
+        except Exception:
+            # The OpenSearch operation stays authoritative if its audit update
+            # cannot be persisted.
             pass
 
     def _publish_remote_evidence(self, job):
@@ -349,7 +368,8 @@ class JobManager:
                 with output.open("wb") as stream:
                     result = subprocess.run(command_arguments(request), cwd=str(PROJECT), stdout=stream,
                                             stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONUNBUFFERED="1",
-                                                                               FSDR_API_JOB_ID=job_id),
+                                                                               FSDR_API_JOB_ID=job_id,
+                                                                               FSDR_CYCLE_ID=job.get("cycle_id", "")),
                                             check=False)
                 os.chmod(output, 0o600)
                 job.update(status="succeeded" if result.returncode == 0 else "failed",
@@ -407,12 +427,27 @@ def inventory_schedule(manager):
             manager.submit(OperationRequest(command="inventory", scheduled=True))
 
 
+def cycle_expiry_monitor():
+    """Persist planned-cycle invalidation without relying on a dashboard visit."""
+    while True:
+        try:
+            configured = _read_json(CONFIG, {})
+            state_dir = Path(configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+            invalidate_expired_planned_cycle(state_dir, _read_json(state_dir / "state.json", {}))
+        except Exception:
+            # Monitoring must never interfere with the serialized controller.
+            LOG.exception("cycle_expiry_monitor_failed")
+        time.sleep(30)
+
+
 @app.on_event("startup")
 def start_inventory_schedule():
     app.state.manager = JobManager()
     _queue_initial_inventory(app.state.manager)
     threading.Thread(target=inventory_schedule, args=(app.state.manager,), daemon=True,
                      name="fsdr-inventory-scheduler").start()
+    threading.Thread(target=cycle_expiry_monitor, daemon=True,
+                     name="fsdr-cycle-expiry-monitor").start()
     # Prime the read-only dashboard data after a container restart.  It never
     # changes OpenSearch or FSDR state, and avoids a blank first page for an
     # already configured controller.
@@ -435,7 +470,7 @@ def _queue_initial_inventory(manager):
         return
     if (state_dir / "state.json").is_file():
         return
-    manager.submit(OperationRequest(command="inventory"))
+    manager.submit(OperationRequest(command="inventory", scheduled=True))
 
 
 @app.get("/healthz")
@@ -495,7 +530,9 @@ def workflow_gate(request, manager):
         return
     configured = _read_json(CONFIG, {})
     state_dir = Path(request.state_dir or configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
-    snapshot = workflow_snapshot(state_dir, _read_json(state_dir / "state.json", {}), manager.recent(),
+    state = _read_json(state_dir / "state.json", {})
+    invalidate_expired_planned_cycle(state_dir, state)
+    snapshot = workflow_snapshot(state_dir, state, manager.recent(),
                                  candidate=dump_model(request))
     step = step_for(snapshot, request.command)
     if not step or not step["eligible"]:
@@ -521,7 +558,8 @@ def submit(request: OperationRequest):
         detail.update(job_id=rejected["id"], rejected_at=rejected["finished_at"])
         raise HTTPException(status_code=409, detail=detail) from None
     job = manager.submit(request)
-    return {"id": job["id"], "status": job["status"], "submitted_at": job["submitted_at"]}
+    return {"id": job["id"], "cycle_id": job.get("cycle_id"), "status": job["status"],
+            "submitted_at": job["submitted_at"]}
 
 
 @app.get("/v1/jobs", dependencies=[Depends(token_auth)])

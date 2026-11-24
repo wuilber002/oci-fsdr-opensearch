@@ -12,13 +12,18 @@ novamente no próximo job.
 Conteúdo de cada bundle
 -----------------------
 
-Cada execução envia ``manifest.json`` e ``bundle.tar.gz`` em um caminho único
-como ``<prefix>/<pair-identity>/executions/<UTC>-<uuid>/``. O manifesto contém
+Cada ciclo DR recebe um ID único, criado quando a primeira solicitação aceita
+inicia o fluxo. O formato combina a data UTC e o ID do job inicial, por
+exemplo ``dr-20261124T020415Z-9be15e83c51b``. Todas as execuções pertencentes
+ao ciclo são publicadas em um caminho único como
+``<prefix>/cycles/<cycle-id>/executions/<UTC>-<uuid>/``. O manifesto contém
 hash SHA-256, tamanho e lista dos arquivos. O bundle contém:
 
 * ``report.json`` com comando, resultado, fase, duração, RPO e inventário;
 * ``state.json`` com a fase, primário ativo, transição, checkpoints e escopo
   de índices necessários para análise e retomada controlada;
+* ``dr-cycle.json`` com o ID, rota, job inicial, ciclo ativo/concluído ou
+  invalidado e a validade do inventário que admitiu o switchover;
 * ``workflow.json`` com a sequência e os gates de cada passo;
 * ``inventory-health.json`` e ``last-run.json``;
 * ``discovery.json`` com a identidade dos clusters, endpoints e aliases CCR;
@@ -28,6 +33,27 @@ hash SHA-256, tamanho e lista dos arquivos. O bundle contém:
 O bundle deliberadamente não contém o payload do Vault, senhas OpenSearch,
 token da API local, chave privada TLS, variáveis de ambiente, logs brutos ou
 saída bruta dos jobs. Esses dados não devem ser copiados para o bucket.
+
+Ciclo único por par de clusters
+-------------------------------
+
+Há somente um ciclo ativo por par de clusters. ``inventory`` manual ou
+``validate-switchover`` abre ou continua o ciclo de planned switchover;
+``failover`` abre ou continua o ciclo de emergency failover. Jobs rejeitados
+antes da execução não criam um ciclo. Inventário agendado apenas atualiza a
+evidência que permite iniciar por ``validate-switchover`` enquanto tiver menos
+de uma hora; ele nunca abre um ciclo.
+
+Antes do ``switchover``, um ciclo planejado é invalidado quando vence a
+validade de uma hora do inventário admitido. Um inventário manual posterior
+abre um novo ciclo. Após ``switchover`` ou ``failover`` o ciclo não expira: a
+mesma identificação permanece até um ``reprotect`` bem-sucedido. Falhas e
+retomadas pertencem ao ciclo já existente.
+
+Evidências de inventário agendado ficam fora de ``cycles/``, em
+``<prefix>/maintenance/<pair-identity>/``. Isso mantém o bucket, dedicado
+exclusivamente ao FSDR, auditável sem confundir manutenção automática com uma
+operação de recuperação.
 
 Configuração
 ------------

@@ -150,8 +150,11 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
     report = summary(result, state, args.max_inventory_age_hours * 3600, elapsed, outcome)
     report.update(command=args.command, reason=reason, finished_at=time.time())
     job_id = os.environ.get("FSDR_API_JOB_ID")
+    cycle_id = os.environ.get("FSDR_CYCLE_ID")
     if job_id:
         report["job_id"] = job_id
+    if cycle_id:
+        report["cycle_id"] = cycle_id
     if args.command == "inventory":
         record_inventory_attempt(directory, outcome, reason, (state or {}).get("inventory_at"), elapsed)
     with Store({"state_dir": str(directory)}).lock(name="report"):
