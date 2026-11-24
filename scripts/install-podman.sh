@@ -8,12 +8,14 @@ SECRET_ID=""
 REPLACE_CONFIG=false
 SKIP_DEPENDENCIES=false
 UPDATE=false
+UNINSTALL=false
 
 usage() {
   cat <<'USAGE'
 Usage:
   sudo ./scripts/install-podman.sh --secret-id <vault-secret-ocid> [options]
   sudo ./scripts/install-podman.sh --update [options]
+  sudo ./scripts/install-podman.sh --uninstall
 
 This copies the deployment files to /opt/oci-fsdr-opensearch, builds a local
 Podman image and starts the controller. The repository checkout is not used at
@@ -24,6 +26,7 @@ Options:
   --replace-config      Replace the persistent runtime configuration.
   --skip-dependencies   Do not install Podman and host utilities with dnf.
   --update              Rebuild/redeploy while preserving runtime configuration and state.
+  --uninstall           Remove this controller, its local image and all persistent FSDR data.
   -h, --help            Show this help.
 USAGE
 }
@@ -34,6 +37,7 @@ while (($#)); do
     --replace-config) REPLACE_CONFIG=true; shift ;;
     --skip-dependencies) SKIP_DEPENDENCIES=true; shift ;;
     --update) UPDATE=true; shift ;;
+    --uninstall) UNINSTALL=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -46,6 +50,26 @@ fi
 if [[ "$FSDR_HOME" != "/opt/oci-fsdr-opensearch" ]]; then
   echo "FSDR_HOME must be /opt/oci-fsdr-opensearch because the Podman deployment uses that persistent host path." >&2
   exit 2
+fi
+if [[ "$UNINSTALL" == true ]]; then
+  if [[ -n "$SECRET_ID" || "$REPLACE_CONFIG" == true || "$UPDATE" == true || "$SKIP_DEPENDENCIES" == true ]]; then
+    echo "--uninstall cannot be combined with installation or update options." >&2
+    exit 2
+  fi
+  if command -v podman >/dev/null 2>&1; then
+    podman rm --force oci-opensearch-fsdr >/dev/null 2>&1 || true
+    podman image rm --force localhost/oci-opensearch-fsdr:local >/dev/null 2>&1 || true
+  fi
+  # FSDR_HOME is fixed above. Removing it also removes configuration, job
+  # history, inventory, API credentials, TLS material and controller logs.
+  rm -rf -- "$FSDR_HOME"
+  if [[ -e "$FSDR_HOME" ]]; then
+    echo "Failed to remove $FSDR_HOME." >&2
+    exit 1
+  fi
+  echo "FSDR controller, local image and persistent runtime data were removed."
+  echo "Podman and host dependencies were kept for a subsequent clean installation."
+  exit 0
 fi
 if [[ ! -f "$SOURCE_ROOT/Dockerfile" || ! -f "$SOURCE_ROOT/scripts/fsdr-job.sh" ]]; then
   echo "Run this script from a complete oci-opensearch-fsdr repository checkout." >&2

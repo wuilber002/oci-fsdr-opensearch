@@ -54,3 +54,16 @@ Para atualizar para uma versão ou commit específico, substitua ``git checkout
 main`` por ``git checkout <TAG_OU_COMMIT>``. Faça backup de
 ``/opt/oci-fsdr-opensearch/runtime`` antes de uma atualização que altere a
 compatibilidade do estado do workflow.
+
+Desinstalação para testes limpos
+--------------------------------
+
+Para repetir a instalação inicial sem reutilizar inventário, histórico, token,
+certificados ou configuração anterior, execute no clone temporário::
+
+    sudo ./scripts/install-podman.sh --uninstall
+
+O comando remove o container ``oci-opensearch-fsdr``, a imagem local
+``localhost/oci-opensearch-fsdr:local`` e todo o conteúdo de
+``/opt/oci-fsdr-opensearch``. Podman e as dependências do host permanecem
+instalados para que a instalação seguinte seja rápida.

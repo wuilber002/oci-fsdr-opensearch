@@ -27,9 +27,10 @@ class PodmanInstallationTests(unittest.TestCase):
         self.assertIn("podman python3 curl openssl ca-certificates", installer)
         self.assertIn('install -m 0755 "$SOURCE_ROOT/scripts/fsdr-job.sh"', installer)
         self.assertIn('podman run --rm "${container_options[@]}" "$image" bootstrap', installer)
+        bootstrap = installer.index('podman run --rm "${container_options[@]}" "$image" bootstrap')
         self.assertLess(
-            installer.index('podman run --rm "${container_options[@]}" "$image" bootstrap'),
-            installer.index('podman rm --force oci-opensearch-fsdr'))
+            bootstrap,
+            installer.index('podman rm --force oci-opensearch-fsdr', bootstrap))
         self.assertIn("--restart=always", installer)
         self.assertIn('"$FSDR_HOME/runtime/state:/var/lib/oci-opensearch-fsdr:rw,Z"', installer)
         self.assertIn('chmod 0711 "$FSDR_HOME" "$FSDR_HOME/bin" "$FSDR_HOME/runtime"', installer)
@@ -43,6 +44,16 @@ class PodmanInstallationTests(unittest.TestCase):
         self.assertIn("--replace-config", installer)
         self.assertIn("Update an existing installation", documentation)
         self.assertIn("It deliberately preserves", documentation)
+
+    def test_uninstall_removes_only_the_fsdr_deployment(self):
+        installer = (ROOT / "scripts/install-podman.sh").read_text()
+        documentation = (ROOT / "docs/INSTALL.rst").read_text()
+        self.assertIn("--uninstall", installer)
+        self.assertIn('podman rm --force oci-opensearch-fsdr', installer)
+        self.assertIn('podman image rm --force localhost/oci-opensearch-fsdr:local', installer)
+        self.assertIn('rm -rf -- "$FSDR_HOME"', installer)
+        self.assertIn("Podman and host dependencies were kept", installer)
+        self.assertIn("Desinstalação para testes limpos", documentation)
 
 
 if __name__ == "__main__":
