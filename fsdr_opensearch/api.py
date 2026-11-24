@@ -379,7 +379,8 @@ class JobManager:
                     result = subprocess.run(command_arguments(request), cwd=str(PROJECT), stdout=result_stream,
                                             stderr=log_stream, env=dict(os.environ, PYTHONUNBUFFERED="1",
                                                                          FSDR_API_JOB_ID=job_id,
-                                                                         FSDR_CYCLE_ID=job.get("cycle_id", "")),
+                                                                         FSDR_CYCLE_ID=job.get("cycle_id", ""),
+                                                                         FSDR_JOB_LOG_FILE=str(output)),
                                             check=False)
                 os.chmod(output, 0o600)
                 os.chmod(structured_result, 0o600)

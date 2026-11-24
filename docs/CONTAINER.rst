@@ -144,7 +144,10 @@ The helper writes its own status and the location of the structured result to
 standard error, and prints only the captured controller log to standard
 output. It exits with ``0`` only when the API reports ``succeeded``. The final
 JSON result is stored separately as ``api-jobs/<JOB_ID>.result.json`` and is
-available through ``GET /v1/jobs/<JOB_ID>/result``. For a failed job, it preserves
+available through ``GET /v1/jobs/<JOB_ID>/result``. Reopen prior output with
+``fsdr-job.sh log <JOB_ID>`` or its result with ``fsdr-job.sh result <JOB_ID>``.
+The detailed JSONL audit files are retained on the host in
+``/opt/oci-fsdr-opensearch/runtime/log``. For a failed job, it preserves
 the controller exit code when it is between ``1`` and ``125``; interrupted,
 invalid, rejected, and transport failures return a non-zero exit code. When
 the API rejects a request because its workflow prerequisites are not met, the

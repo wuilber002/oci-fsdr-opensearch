@@ -89,6 +89,20 @@ def load_config(path):
     return cfg
 
 
+class HumanFormatter(logging.Formatter):
+    """Readable per-job diagnostic log, with the same secret redaction as JSONL."""
+    def __init__(self, secrets):
+        super().__init__("%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
+        self.secrets = sorted((s for s in secrets if s), key=len, reverse=True)
+        self.converter = time.gmtime
+
+    def format(self, record):
+        output = super().format(record)
+        for secret in self.secrets:
+            output = output.replace(secret, "[REDACTED]")
+        return output
+
+
 class JsonFormatter(logging.Formatter):
     def __init__(self, run_id, secrets):
         super().__init__()
@@ -107,7 +121,7 @@ class JsonFormatter(logging.Formatter):
         return output
 
 
-def configure_logging(cfg, console=False):
+def configure_logging(cfg, console=False, human_log_file=None):
     directory = Path(cfg["log_dir"])
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     run_id = uuid.uuid4().hex
@@ -122,6 +136,10 @@ def configure_logging(cfg, console=False):
                                   backupCount=10, encoding="utf-8")
     handler.setFormatter(formatter)
     LOG.addHandler(handler)
+    if human_log_file:
+        human_handler = logging.FileHandler(human_log_file, encoding="utf-8")
+        human_handler.setFormatter(HumanFormatter(secrets))
+        LOG.addHandler(human_handler)
     if console:
         stream = logging.StreamHandler()
         stream.setFormatter(formatter)
@@ -133,7 +151,7 @@ def configure_logging(cfg, console=False):
 def redact_secrets(values):
     """Register newly retrieved secrets before any further processing or logging."""
     for handler in LOG.handlers:
-        if isinstance(handler.formatter, JsonFormatter):
+        if isinstance(handler.formatter, (JsonFormatter, HumanFormatter)):
             handler.formatter.secrets = sorted(set(handler.formatter.secrets) | {
                 value for value in values if isinstance(value, str) and value}, key=len, reverse=True)
 

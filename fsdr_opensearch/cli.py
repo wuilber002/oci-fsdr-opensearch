@@ -205,6 +205,9 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
         except BusyError:
             LOG.info("retention_skipped reason=controller_busy")
     structured_result["summary"] = report
+    feedback("Completed {}: outcome={}; phase={}; active_primary={}; protected_indices={}; duration={}s.".format(
+        args.command, outcome, report["phase"] or "unavailable", report["active"] or "unavailable",
+        report["index_count"], report["duration_seconds"]))
     if args.human:
         print(f"Command: {args.command} | outcome: {outcome} | duration: {report['duration_seconds']}s")
         print(f"Phase: {report['phase']} | primary: {report['active']} | indices: {report['index_count']}")
@@ -251,14 +254,16 @@ def main(argv=None):
         directory = Path(args.state_dir).resolve() if args.state_dir else (
             default_state_dir(args.secret_id) if args.secret_id else Path(__file__).resolve().parent.parent / "var/dr-pending")
         log_dir = Path(args.log_dir).resolve() if args.log_dir else directory / "logs"
-        # Detailed HTTP/OCI events belong in the JSONL audit log.  The console
-        # is reserved for the final human/JSON result and explicit failures.
-        configure_logging({"log_dir": str(log_dir)}, console=False)
+        # JSONL remains the durable audit trail. The API additionally passes a
+        # per-job log path, so its dashboard log receives readable diagnostics
+        # without mixing in the final structured JSON stdout result.
+        configure_logging({"log_dir": str(log_dir)}, console=False,
+                          human_log_file=os.environ.get("FSDR_JOB_LOG_FILE"))
         configured = True
         LOG.info("command_started command=%s", args.command)
         if not getattr(args, "scheduled", False):
-            feedback("Starting %s. Concise progress is shown in the terminal; details are in %s." %
-                     (args.command, log_dir))
+            feedback("Starting %s. Progress and diagnostic events are being recorded for this job." %
+                     args.command)
         if getattr(args, "scheduled", False) and (not settings["inventory_enabled"] or not args.secret_id):
             finish(args, directory, None, None, started, "skipped", "inventory_disabled_or_secret_pending")
             return 0
@@ -342,7 +347,8 @@ def main(argv=None):
                 finish(args, directory, None, cfg, started, "failed", "execution_failed")
             except Exception:
                 LOG.exception("failure_report_failed")
-            print(f"Failure: {exc}. State preserved for analysis/resume; see {log_dir}.", file=sys.stderr)
+            print(f"Failure: {exc}. FSDR state is preserved for analysis/resume; the job log includes diagnostic details.",
+                  file=sys.stderr)
         else:
             print(f"Failure before execution started: {exc}", file=sys.stderr)
         return 1

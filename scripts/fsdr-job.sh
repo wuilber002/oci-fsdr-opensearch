@@ -26,6 +26,7 @@ if [[ ! -r "$certificate" ]]; then
   exit 1
 fi
 
+if [[ "$command_name" != "log" && "$command_name" != "result" ]]; then
 payload=$(python3 - "$command_name" "$parameters" <<'PY'
 import json
 import sys
@@ -43,11 +44,23 @@ parameters["command"] = command
 print(json.dumps(parameters, separators=(",", ":")))
 PY
 )
+fi
 
 api() {
   curl --fail-with-body --silent --show-error --cacert "$certificate" \
     -H "Authorization: Bearer $token" "$@"
 }
+
+if [[ "$command_name" == "log" || "$command_name" == "result" ]]; then
+  if [[ $# -ne 2 || ! "$parameters" =~ ^[a-f0-9]{32}$ ]]; then
+    echo "Usage: $0 $command_name <JOB_ID>" >&2
+    exit 2
+  fi
+  endpoint="output"
+  [[ "$command_name" == "result" ]] && endpoint="result"
+  api "https://127.0.0.1:1604/v1/jobs/${parameters}/${endpoint}"
+  exit 0
+fi
 
 response_file=$(mktemp)
 trap 'rm -f "$response_file"' EXIT
@@ -140,6 +153,7 @@ printf 'Controller log for %s:\n' "$job_id"
 api "https://127.0.0.1:1604/v1/jobs/${job_id}/output" || true
 printf '\nStructured result JSON: https://127.0.0.1:1604/v1/jobs/%s/result\n' "$job_id" >&2
 printf 'Local controller result: %s/runtime/state/api-jobs/%s.result.json\n' "$root" "$job_id" >&2
+printf 'Detailed JSONL audit files: %s/runtime/log/\n' "$root" >&2
 
 if [[ "$status" == succeeded ]]; then
   exit 0
