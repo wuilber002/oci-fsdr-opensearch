@@ -27,6 +27,9 @@ class PodmanInstallationTests(unittest.TestCase):
         self.assertIn("podman python3 curl openssl ca-certificates", installer)
         self.assertIn('install -m 0755 "$SOURCE_ROOT/scripts/fsdr-job.sh"', installer)
         self.assertIn('podman run --rm "${container_options[@]}" "$image" bootstrap', installer)
+        self.assertLess(
+            installer.index('podman run --rm "${container_options[@]}" "$image" bootstrap'),
+            installer.index('podman rm --force oci-opensearch-fsdr'))
         self.assertIn("--restart=always", installer)
         self.assertIn('"$FSDR_HOME/runtime/state:/var/lib/oci-opensearch-fsdr:rw,Z"', installer)
         self.assertIn('chmod 0711 "$FSDR_HOME" "$FSDR_HOME/bin" "$FSDR_HOME/runtime"', installer)

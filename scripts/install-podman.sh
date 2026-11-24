@@ -140,12 +140,12 @@ container_options=(
   --volume "$FSDR_HOME/runtime/log:/var/log/oci-opensearch-fsdr:rw,Z"
 )
 image=localhost/oci-opensearch-fsdr:local
-podman rm --force oci-opensearch-fsdr >/dev/null 2>&1 || true
 podman run --rm "${container_options[@]}" "$image" bootstrap
 # The API token/private key stay private to UID 10001. The local helper only
 # needs traversal and the public CA certificate.
 chmod 0711 "$FSDR_HOME/runtime/state" "$FSDR_HOME/runtime/state/api-secrets"
 chmod 0644 "$FSDR_HOME/runtime/state/api-secrets/tls.crt"
+podman rm --force oci-opensearch-fsdr >/dev/null 2>&1 || true
 podman run --detach --name oci-opensearch-fsdr --restart=always \
   "${container_options[@]}" "$image"
 

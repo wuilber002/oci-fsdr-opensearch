@@ -116,6 +116,18 @@ class SecretAndSDKTests(unittest.TestCase):
         self.assertEqual(selected["remote_ocids"], {"cluster-b": B})
         self.assertEqual(cloud.region("ocid1.vaultsecret.oc1.fra.secret"), "eu-frankfurt-1")
 
+    def test_oci_error_reports_safe_service_diagnostics(self):
+        class ServiceFailure(Exception):
+            status = 400
+            code = "InvalidParameter"
+            opc_request_id = "request-for-support"
+
+        cloud = object.__new__(Cloud)
+        with self.assertRaisesRegex(
+                CloudError,
+                r"status=400, code=InvalidParameter, request_id=request-for-support"):
+            cloud._read("GetSecretBundle", lambda: (_ for _ in ()).throw(ServiceFailure()))
+
     def test_cached_source_metadata_only_for_explicit_transient_source_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             cloud = FakeCloud()

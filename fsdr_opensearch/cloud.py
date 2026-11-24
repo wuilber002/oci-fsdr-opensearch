@@ -75,10 +75,17 @@ def endpoint(fqdn):
 
 
 class CloudError(Error):
-    def __init__(self, operation, status, transient):
+    def __init__(self, operation, status, transient, code=None, request_id=None):
         self.status = status
         self.transient = transient
-        super().__init__(f"OCI {operation} failed (status={status}); check IAM/network/region")
+        self.code = code
+        self.request_id = request_id
+        detail = f"status={status}"
+        if code:
+            detail += f", code={code}"
+        if request_id:
+            detail += f", request_id={request_id}"
+        super().__init__(f"OCI {operation} failed ({detail}); check IAM/network/region")
 
 
 class Cloud:
@@ -109,11 +116,13 @@ class Cloud:
             response = callback()
         except Exception as exc:
             status = getattr(exc, "status", None)
+            code = getattr(exc, "code", None)
+            request_id = getattr(exc, "opc_request_id", None)
             transient = status in (429, 500, 502, 503, 504) or type(exc).__name__ in (
                 "ConnectTimeout", "ReadTimeout", "ConnectionError", "RequestException")
-            LOG.error("oci_read operation=%s status=%s type=%s duration=%.3f", operation,
-                      status, type(exc).__name__, time.monotonic() - started)
-            raise CloudError(operation, status, transient) from None
+            LOG.error("oci_read operation=%s status=%s code=%s request_id=%s type=%s duration=%.3f", operation,
+                      status, code, request_id, type(exc).__name__, time.monotonic() - started)
+            raise CloudError(operation, status, transient, code, request_id) from None
         LOG.info("oci_read operation=%s duration=%.3f request_id=%s", operation,
                  time.monotonic() - started, response.headers.get("opc-request-id"))
         return response.data
