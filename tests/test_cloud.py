@@ -121,11 +121,12 @@ class SecretAndSDKTests(unittest.TestCase):
             status = 400
             code = "InvalidParameter"
             opc_request_id = "request-for-support"
+            message = "The supplied parameter is invalid."
 
         cloud = object.__new__(Cloud)
         with self.assertRaisesRegex(
                 CloudError,
-                r"status=400, code=InvalidParameter, request_id=request-for-support"):
+                r"status=400, code=InvalidParameter, request_id=request-for-support, message=The supplied parameter is invalid"):
             cloud._read("GetSecretBundle", lambda: (_ for _ in ()).throw(ServiceFailure()))
 
     def test_cached_source_metadata_only_for_explicit_transient_source_failure(self):

@@ -75,16 +75,19 @@ def endpoint(fqdn):
 
 
 class CloudError(Error):
-    def __init__(self, operation, status, transient, code=None, request_id=None):
+    def __init__(self, operation, status, transient, code=None, request_id=None, message=None):
         self.status = status
         self.transient = transient
         self.code = code
         self.request_id = request_id
+        self.service_message = message
         detail = f"status={status}"
         if code:
             detail += f", code={code}"
         if request_id:
             detail += f", request_id={request_id}"
+        if message:
+            detail += f", message={message}"
         super().__init__(f"OCI {operation} failed ({detail}); check IAM/network/region")
 
 
@@ -118,11 +121,16 @@ class Cloud:
             status = getattr(exc, "status", None)
             code = getattr(exc, "code", None)
             request_id = getattr(exc, "opc_request_id", None)
+            message = getattr(exc, "message", None)
+            if isinstance(message, str):
+                message = " ".join(message.split())[:500]
+            else:
+                message = None
             transient = status in (429, 500, 502, 503, 504) or type(exc).__name__ in (
                 "ConnectTimeout", "ReadTimeout", "ConnectionError", "RequestException")
-            LOG.error("oci_read operation=%s status=%s code=%s request_id=%s type=%s duration=%.3f", operation,
-                      status, code, request_id, type(exc).__name__, time.monotonic() - started)
-            raise CloudError(operation, status, transient, code, request_id) from None
+            LOG.error("oci_read operation=%s status=%s code=%s request_id=%s message=%s type=%s duration=%.3f", operation,
+                      status, code, request_id, message, type(exc).__name__, time.monotonic() - started)
+            raise CloudError(operation, status, transient, code, request_id, message) from None
         LOG.info("oci_read operation=%s duration=%.3f request_id=%s", operation,
                  time.monotonic() - started, response.headers.get("opc-request-id"))
         return response.data
