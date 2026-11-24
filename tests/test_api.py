@@ -94,7 +94,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("topology-bidirectional", api.DASHBOARD_HTML)
         self.assertIn("primary-identified", api.DASHBOARD_HTML)
         self.assertIn("primary-unavailable", api.DASHBOARD_HTML)
-        self.assertIn("grid-template-columns:repeat(4,minmax(220px,1fr))", api.DASHBOARD_HTML)
+        self.assertIn("grid-template-columns:repeat(8,minmax(0,1fr))", api.DASHBOARD_HTML)
         self.assertIn("Replication health", api.DASHBOARD_HTML)
         self.assertIn("Inventory schedule", api.DASHBOARD_HTML)
         self.assertIn("Protection status", api.DASHBOARD_HTML)
