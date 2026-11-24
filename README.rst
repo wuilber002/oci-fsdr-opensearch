@@ -34,6 +34,7 @@ only for the image build and can be removed after the command succeeds.
 Documentation
 -------------
 
+* `Quick installation and update <docs/INSTALL.rst>`_
 * `Container deployment, API and web console <docs/CONTAINER.rst>`_
 * `FSDR workflow and operational commands <docs/FSDR.rst>`_
 * `Future multi-follower implementation plan <docs/MULTI_FOLLOWER_PLAN.rst>`_
