@@ -252,7 +252,12 @@ class JobManager:
             item.get("status") == "running" for item in self._recent_jobs())
 
     def _recent_jobs(self):
+        # A completed job also has ``<id>.result.json``. Only the exact
+        # metadata name is a history record; treating every ``*.json`` as a
+        # job creates a phantom entry with no request or lifecycle fields.
         for path in JOB_DIRECTORY.glob("*.json"):
+            if not re.fullmatch(r"[a-f0-9]{32}\.json", path.name):
+                continue
             try:
                 yield json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):

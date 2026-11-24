@@ -549,7 +549,22 @@ class ApiTests(unittest.TestCase):
         finally:
             api.CONFIG = original
 
-    def test_rejected_job_has_a_human_readable_audit_log(self):
+    def test_recent_jobs_excludes_structured_result_sidecars(self):
+        original = api.JOB_DIRECTORY
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                api.JOB_DIRECTORY = Path(directory)
+                job_id = "a" * 32
+                (api.JOB_DIRECTORY / (job_id + ".json")).write_text(
+                    json.dumps({"id": job_id, "request": {"command": "inventory"},
+                                "submitted_at": "2026-01-01T00:00:00Z"}), encoding="utf-8")
+                (api.JOB_DIRECTORY / (job_id + ".result.json")).write_text(
+                    json.dumps({"summary": {"command": "inventory"}}), encoding="utf-8")
+                manager = api.JobManager()
+                self.assertEqual([job["id"] for job in manager.recent()], [job_id])
+        finally:
+            api.JOB_DIRECTORY = original
+
         original = api.JOB_DIRECTORY
         try:
             with tempfile.TemporaryDirectory() as directory:
