@@ -1,6 +1,26 @@
 OCI OpenSearch FSDR
 ===================
 
+.. image:: fsdr_opensearch/static/fsdr-logo.png
+   :alt: OCI OpenSearch FSDR shield logo
+   :width: 128px
+   :align: center
+
+.. |tests| image:: https://github.com/wuilber002/oci-fsdr-opensearch/actions/workflows/tests.yml/badge.svg?branch=main
+   :target: https://github.com/wuilber002/oci-fsdr-opensearch/actions/workflows/tests.yml
+   :alt: Automated tests
+
+.. |python| image:: https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white
+   :alt: Python 3.9 or newer
+
+.. |podman| image:: https://img.shields.io/badge/Container-Podman-892CA0?logo=podman&logoColor=white
+   :alt: Podman deployment
+
+.. |opensearch| image:: https://img.shields.io/badge/OpenSearch-CCR-005EB8
+   :alt: OpenSearch cross-cluster replication
+
+|tests| |python| |podman| |opensearch|
+
 OCI OpenSearch FSDR is a container-first controller for planned switchover,
 failover, reverse protection, inventory and evidence collection for an OCI
 OpenSearch CCR pair. It uses OCI Instance Principal to read one Vault Secret
@@ -37,6 +57,8 @@ Documentation
 * `Quick installation and update <docs/INSTALL.rst>`_
 * `Container deployment, API and web console <docs/CONTAINER.rst>`_
 * `FSDR workflow and operational commands <docs/FSDR.rst>`_
+* `Recovery-path diagrams <docs/WORKFLOWS.md>`_
+* `Future DR drill implementation plan <docs/DRILL_PLAN.rst>`_
 * `Future multi-follower implementation plan <docs/MULTI_FOLLOWER_PLAN.rst>`_
 * `Instance Principal IAM requirements <docs/IAM.rst>`_
 * ``secret.example.json``: expected Vault Secret payload.
