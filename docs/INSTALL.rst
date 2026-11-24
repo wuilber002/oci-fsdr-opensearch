@@ -54,3 +54,26 @@ Para atualizar para uma versão ou commit específico, substitua ``git checkout
 main`` por ``git checkout <TAG_OU_COMMIT>``. Faça backup de
 ``/opt/oci-fsdr-opensearch/runtime`` antes de uma atualização que altere a
 compatibilidade do estado do workflow.
+
+Instalação limpa a partir da versão anterior
+--------------------------------------------
+
+Este procedimento remove o controller anterior, seu histórico, inventário,
+token e certificados. Faça uma cópia do estado caso ele seja necessário para
+auditoria ou rollback::
+
+    sudo tar -C /opt -czf /var/tmp/oci-fsdr-opensearch-runtime-backup.tgz \
+      oci-opensearch-fsdr/runtime oci-fsdr-opensearch/runtime 2>/dev/null || true
+
+Pare e remova somente os containers e imagens conhecidos do FSDR. Estes
+comandos não removem Docker, Podman, nem containers de outros projetos::
+
+    sudo docker rm -f oci-opensearch-fsdr 2>/dev/null || true
+    sudo podman rm -f oci-opensearch-fsdr 2>/dev/null || true
+    sudo docker image rm oci-opensearch-fsdr:local 2>/dev/null || true
+    sudo podman image rm localhost/oci-opensearch-fsdr:local 2>/dev/null || true
+    sudo rm -rf /opt/oci-opensearch-fsdr /opt/oci-fsdr-opensearch
+
+Em seguida, execute a instalação inicial desta página. O primeiro
+``inventory`` será criado como um novo ciclo FSDR e não reutilizará qualquer
+evidência da instalação anterior.
