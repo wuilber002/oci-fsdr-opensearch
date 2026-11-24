@@ -715,6 +715,23 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.media_type, "application/json")
         self.assertEqual(response.body, b'{"result":"ok"}\n')
 
+    def test_controller_log_level_filter_keeps_operational_events_concise(self):
+        data = (b"[12:00:00] DEBUG OpenSearch request index=fsdr-demo-0001 status=200\n"
+                b"[12:00:01] INFO  Inventory completed: 13 protected indices.\n"
+                b"[12:00:02] WARN  Remote evidence upload is pending.\n"
+                b"[12:00:03] ERROR Inventory validation failed.\n")
+        concise = api.filter_log_levels(data, {"INFO", "WARN", "ERROR"}).decode("utf-8")
+        self.assertNotIn("DEBUG", concise)
+        self.assertIn("Inventory completed", concise)
+        self.assertIn("upload is pending", concise)
+        self.assertIn("validation failed", concise)
+        self.assertEqual(api.filter_log_levels(data, api.LOG_LEVELS), data)
+
+    def test_invalid_controller_log_level_is_rejected(self):
+        with self.assertRaises(api.HTTPException) as raised:
+            api.requested_log_levels("TRACE")
+        self.assertEqual(raised.exception.status_code, 422)
+
     def test_dashboard_job_log_stream_sends_output_then_end(self):
         class Manager:
             def __init__(self, directory):

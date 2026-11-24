@@ -5,12 +5,18 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 command_name=${1:-}
 parameters=${2:-'{}'}
+detail_option=${3:-}
 poll_interval=${FSDR_JOB_POLL_INTERVAL:-2}
 
-if [[ -z "$command_name" || $# -gt 2 ]]; then
+if [[ -z "$command_name" || $# -gt 3 ]]; then
   echo "Usage: $0 <command> [json-parameters]" >&2
+  echo "       $0 log <JOB_ID> [--debug]" >&2
   echo "Example: $0 inventory" >&2
   echo "Example: $0 reprotect '{\"reprotect_parallelism\":2}'" >&2
+  exit 2
+fi
+if [[ "$command_name" != "log" && "$command_name" != "result" && $# -gt 2 ]]; then
+  echo "A controller command accepts at most one JSON parameter object." >&2
   exit 2
 fi
 if [[ ! "$command_name" =~ ^[a-z][a-z-]*$ ]]; then
@@ -52,13 +58,26 @@ api() {
 }
 
 if [[ "$command_name" == "log" || "$command_name" == "result" ]]; then
-  if [[ $# -ne 2 || ! "$parameters" =~ ^[a-f0-9]{32}$ ]]; then
+  if [[ $# -lt 2 || $# -gt 3 || ! "$parameters" =~ ^[a-f0-9]{32}$ ]]; then
     echo "Usage: $0 $command_name <JOB_ID>" >&2
     exit 2
   fi
+  if [[ "$command_name" == "result" && -n "$detail_option" ]]; then
+    echo "The result command does not accept log-level options." >&2
+    exit 2
+  fi
   endpoint="output"
-  [[ "$command_name" == "result" ]] && endpoint="result"
-  api "https://127.0.0.1:1604/v1/jobs/${parameters}/${endpoint}"
+  suffix=""
+  if [[ "$command_name" == "log" ]]; then
+    if [[ -n "$detail_option" && "$detail_option" != "--debug" ]]; then
+      echo "Usage: $0 log <JOB_ID> [--debug]" >&2
+      exit 2
+    fi
+    [[ "$detail_option" == "--debug" ]] && suffix="?levels=DEBUG%2CINFO%2CWARN%2CERROR"
+  else
+    endpoint="result"
+  fi
+  api "https://127.0.0.1:1604/v1/jobs/${parameters}/${endpoint}${suffix}"
   exit 0
 fi
 
@@ -153,7 +172,7 @@ printf 'Controller log for %s:\n' "$job_id"
 api "https://127.0.0.1:1604/v1/jobs/${job_id}/output" || true
 printf '\nStructured result JSON: https://127.0.0.1:1604/v1/jobs/%s/result\n' "$job_id" >&2
 printf 'Local controller result: %s/runtime/state/api-jobs/%s.result.json\n' "$root" "$job_id" >&2
-printf 'Detailed JSONL audit files: %s/runtime/log/\n' "$root" >&2
+printf 'Detailed log: %s log %s --debug\n' "$0" "$job_id" >&2
 
 if [[ "$status" == succeeded ]]; then
   exit 0

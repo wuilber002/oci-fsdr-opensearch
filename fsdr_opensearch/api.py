@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -213,33 +214,33 @@ class JobManager:
             "output": self.output_path(job_id).name,
             "result": self.result_path(job_id).name,
         }
+        stamp = time.strftime("%H:%M:%S")
         lines = [
-            "FSDR job rejected before execution.",
-            "Command: {}".format(request.command),
-            "Reason: {}".format(job["reason"]),
-            "",
-            "The controller did not start because required workflow gates are not satisfied.",
+            "[{}] ERROR FSDR job rejected before execution.".format(stamp),
+            "[{}] INFO  Command: {}".format(stamp, request.command),
+            "[{}] ERROR Reason: {}".format(stamp, job["reason"]),
+            "[{}] INFO  The controller did not start because required workflow gates are not satisfied.".format(stamp),
         ]
         inventory = rejection.get("inventory") or {}
         if inventory:
             age = inventory.get("age_seconds")
             maximum = inventory.get("max_age_seconds")
             if isinstance(age, (int, float)) and isinstance(maximum, (int, float)):
-                lines.extend(("", "Inventory age: {} min ({} min limit; {}).".format(
-                    int(age // 60), int(maximum // 60),
-                    "valid" if inventory.get("fresh") else "expired")))
+                lines.append("[{}] INFO  Inventory age: {} min ({} min limit; {}).".format(
+                    stamp, int(age // 60), int(maximum // 60),
+                    "valid" if inventory.get("fresh") else "expired"))
             elif inventory.get("detail"):
-                lines.extend(("", "Inventory: {}".format(inventory["detail"])))
+                lines.append("[{}] INFO  Inventory: {}".format(stamp, inventory["detail"]))
         requirements = rejection.get("requirements") or []
         unmet = [item for item in requirements if not item.get("met")]
         if unmet:
-            lines.extend(("", "Unmet requirements:"))
+            lines.append("[{}] WARN  Unmet requirements:".format(stamp))
             for item in unmet:
                 detail = item.get("detail") or item.get("key") or "Requirement not satisfied"
                 explanation = item.get("explanation")
-                lines.append("- {}".format(detail))
+                lines.append("[{}] WARN  - {}".format(stamp, detail))
                 if explanation:
-                    lines.append("  {}".format(explanation))
+                    lines.append("[{}] WARN    {}".format(stamp, explanation))
         self.output_path(job_id).write_text("\n".join(lines) + "\n", encoding="utf-8")
         os.chmod(self.output_path(job_id), 0o600)
         self.write(job)
@@ -381,8 +382,7 @@ class JobManager:
                     result = subprocess.run(command_arguments(request), cwd=str(PROJECT), stdout=result_stream,
                                             stderr=log_stream, env=dict(os.environ, PYTHONUNBUFFERED="1",
                                                                          FSDR_API_JOB_ID=job_id,
-                                                                         FSDR_CYCLE_ID=job.get("cycle_id", ""),
-                                                                         FSDR_JOB_LOG_FILE=str(output)),
+                                                                         FSDR_CYCLE_ID=job.get("cycle_id", "")),
                                             check=False)
                 os.chmod(output, 0o600)
                 os.chmod(structured_result, 0o600)
@@ -616,6 +616,34 @@ def job(job_id: str):
         raise HTTPException(status_code=404, detail="job not found") from None
 
 
+LOG_LEVELS = frozenset({"DEBUG", "INFO", "WARN", "ERROR"})
+LOG_LINE = re.compile(r"^\[\d{2}:\d{2}:\d{2}\]\s+(DEBUG|INFO|WARN|ERROR)\s+")
+
+
+def requested_log_levels(value):
+    """Parse a comma-separated safe subset of controller log levels."""
+    if value is None:
+        return {"INFO", "WARN", "ERROR"}
+    levels = {part.strip().upper() for part in value.split(",") if part.strip()}
+    if not levels or not levels <= LOG_LEVELS:
+        raise HTTPException(status_code=422, detail="levels must contain DEBUG, INFO, WARN and/or ERROR")
+    return levels
+
+
+def filter_log_levels(data, levels):
+    """Select complete categorized log lines while retaining line endings."""
+    if levels == LOG_LEVELS:
+        return data
+    selected = []
+    for line in data.decode("utf-8", errors="replace").splitlines(keepends=True):
+        match = LOG_LINE.match(line)
+        # Older rejected-job records may not be categorized. Keep them visible
+        # until their lifecycle naturally ages out of local history.
+        if match is None or match.group(1) in levels:
+            selected.append(line)
+    return "".join(selected).encode("utf-8")
+
+
 def job_log_bytes(manager, job):
     """Read the local log first, then the immutable Object Storage copy."""
     try:
@@ -639,14 +667,15 @@ def job_log_bytes(manager, job):
 
 
 @app.get("/v1/jobs/{job_id}/output", dependencies=[Depends(token_auth)])
-def output(job_id: str):
+def output(job_id: str, levels: Optional[str] = None):
     try:
         manager = api_manager()
         job = manager.read(job_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="job not found") from None
     data, source = job_log_bytes(manager, job)
-    return Response(content=data, media_type="text/plain; charset=utf-8",
+    return Response(content=filter_log_levels(data, requested_log_levels(levels)),
+                    media_type="text/plain; charset=utf-8",
                     headers={"X-FSDR-Log-Source": source})
 
 
@@ -665,18 +694,19 @@ def job_result(job_id: str):
 
 
 @app.get("/dashboard/v1/jobs/{job_id}/output")
-def dashboard_output(job_id: str):
+def dashboard_output(job_id: str, levels: Optional[str] = None):
     try:
         manager = api_manager()
         job = manager.read(job_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="job not found") from None
     data, source = job_log_bytes(manager, job)
-    return Response(content=data, media_type="text/plain; charset=utf-8",
+    return Response(content=filter_log_levels(data, requested_log_levels(levels)),
+                    media_type="text/plain; charset=utf-8",
                     headers={"X-FSDR-Log-Source": source})
 
 
-async def dashboard_output_stream(manager, job_id, offset):
+async def dashboard_output_stream(manager, job_id, offset, levels=None):
     """Tail one job's output as SSE without retaining output in memory."""
     terminal = {"succeeded", "failed", "interrupted", "rejected"}
     last_keepalive = time.monotonic()
@@ -698,8 +728,9 @@ async def dashboard_output_stream(manager, job_id, offset):
             data = b""
         if data:
             offset += len(data)
-            payload = data.decode("utf-8", errors="replace")
-            yield "id: {}\nevent: output\ndata: {}\n\n".format(offset, json.dumps(payload))
+            payload = filter_log_levels(data, levels or {"INFO", "WARN", "ERROR"}).decode("utf-8", errors="replace")
+            if payload:
+                yield "id: {}\nevent: output\ndata: {}\n\n".format(offset, json.dumps(payload))
             continue
         if job.get("status") in terminal:
             yield "id: {}\nevent: end\ndata: {}\n\n".format(offset, json.dumps(job["status"]))
@@ -809,7 +840,7 @@ async def dashboard_events():
 
 
 @app.get("/dashboard/v1/jobs/{job_id}/events")
-async def dashboard_output_events(job_id: str, request: Request):
+async def dashboard_output_events(job_id: str, request: Request, levels: Optional[str] = None):
     """Stream a selected job log to the read-only local dashboard via SSE."""
     manager = api_manager()
     try:
@@ -820,7 +851,7 @@ async def dashboard_output_events(job_id: str, request: Request):
         offset = max(0, int(request.headers.get("last-event-id", "0")))
     except ValueError:
         offset = 0
-    return StreamingResponse(dashboard_output_stream(manager, job_id, offset),
+    return StreamingResponse(dashboard_output_stream(manager, job_id, offset, requested_log_levels(levels)),
                              media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

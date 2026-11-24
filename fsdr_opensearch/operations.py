@@ -80,7 +80,7 @@ def precheck(cfg, cs, names=("a", "b"), require_reverse=True):
                 "FSDR requires both directions to be prepared for reprotection after the switch."
             )
         # connected=false while idle is diagnostic, not proof of failure.
-        LOG.info("precheck cluster=%s version=%s health=green alias=%s connected=%s uuid=%s",
+        LOG.debug("precheck cluster=%s version=%s health=green alias=%s connected=%s uuid=%s",
                  name, version, alias, aliases.get(alias, {}).get("connected"), info["cluster_uuid"])
         infos[name] = info
     if len(infos) == 2 and infos["a"]["cluster_uuid"] == infos["b"]["cluster_uuid"]:
@@ -192,7 +192,7 @@ def inventory(cfg, cs, store, persist=True):
                 if alias not in remotes:
                     raise Error(f"CCR alias {alias} on {target} is absent from OCI discovery")
                 if remotes[alias] != cfg["clusters"][source]["id"]:
-                    LOG.info("inventory_skip_external_peer cluster=%s index=%s alias=%s", target, follower_index, alias)
+                    LOG.debug("inventory_skip_external_peer cluster=%s index=%s alias=%s", target, follower_index, alias)
                     continue
             leader_index = scoped(cfg, status.get("leader_index", ""))
             matching_status(status, cfg, target, source, leader_index)
@@ -222,7 +222,7 @@ def inventory(cfg, cs, store, persist=True):
     state["annotation"] = validate_annotation_scope(cfg, cs, state, source, target)
     if persist:
         store.write(state)
-    LOG.info("inventory source=%s target=%s indices=%d persisted=%s", source, target, len(entries), persist)
+    LOG.debug("inventory source=%s target=%s indices=%d persisted=%s", source, target, len(entries), persist)
     return state
 
 
@@ -237,7 +237,7 @@ def validate_switchover(cfg, cs, store):
     if not result["ready"]:
         failed = [name for name, passed in result["gates"].items() if not passed]
         raise Error("Switchover pre-validation failed: {}".format(", ".join(failed)))
-    LOG.info("switchover_prevalidation_passed active=%s indices=%d", state["active"], len(state["indices"]))
+    LOG.debug("switchover_prevalidation_passed active=%s indices=%d", state["active"], len(state["indices"]))
     return {"validation": "switchover", "ready": True, "active": state["active"],
             "index_count": len(state["indices"]), "readiness": result}
 
@@ -276,7 +276,7 @@ def validate_post_switchover(cfg, cs, store):
                 new_index, old_count, new_count))
         checked.append({"old_primary_index": old_index, "new_primary_index": new_index,
                         "documents": new_count})
-    LOG.info("post_switchover_validation_passed active=%s indices=%d", target, len(checked))
+    LOG.debug("post_switchover_validation_passed active=%s indices=%d", target, len(checked))
     return {"validation": "post_switchover", "ready_for_reprotect": True,
             "active": target, "indices": checked}
 
@@ -316,7 +316,7 @@ def wait_sync(cfg, cs, entries, source, target, message=None):
             # current source primaries, even during a live reverse bootstrap.
             final = final_checkpoint(cs[source], entry[source])
             synced = synced and final is not None and follower == final
-            LOG.info("sync cluster=%s index=%s status=%s leader_checkpoint=%s follower_checkpoint=%s ready=%s",
+            LOG.debug("sync cluster=%s index=%s status=%s leader_checkpoint=%s follower_checkpoint=%s ready=%s",
                      target, entry[target], status.get("status"), leader, follower, synced)
             ready = ready and synced
             ready_count += int(synced)
@@ -445,16 +445,16 @@ def transition(cfg, cs, store, mode, resume=False,
             feedback("%s..." % labels.get(name, name))
             tr["current_step"] = name
             store.write(state)
-            LOG.info("step_started transition=%s step=%s", tr["id"], name)
+            LOG.debug("step_started transition=%s step=%s", tr["id"], name)
             completed = action()
             if completed is False:
                 tr["current_step"] = None
                 store.write(state)
-                LOG.info("step_deferred transition=%s step=%s", tr["id"], name)
+                LOG.debug("step_deferred transition=%s step=%s", tr["id"], name)
                 return False
             tr["steps"].append(name)
             store.write(state)
-            LOG.info("step_completed transition=%s step=%s", tr["id"], name)
+            LOG.debug("step_completed transition=%s step=%s", tr["id"], name)
             if name != "final_sync":
                 feedback("%s: completed." % labels.get(name, name))
             return True
@@ -534,7 +534,7 @@ def transition(cfg, cs, store, mode, resume=False,
     tr["service_restored_at"] = time.time()
     tr["current_step"] = None
     store.write(state)
-    LOG.info("SERVICE_RESTORED active=%s mode=%s component=OpenSearch protection=pending", target, mode)
+    LOG.debug("SERVICE_RESTORED active=%s mode=%s component=OpenSearch protection=pending", target, mode)
     feedback("Service restored on %s. Reverse protection remains pending." % target_name)
     return state
 
@@ -650,7 +650,7 @@ def reprotect(cfg, cs, store, parallelism=1):
     tr["protection_restored_at"] = time.time()
     tr.update(current_step=None, current_index=None)
     store.write(state)
-    LOG.info("PROTECTION_RESTORED leader=%s follower=%s", new, old)
+    LOG.debug("PROTECTION_RESTORED leader=%s follower=%s", new, old)
     feedback("Reverse protection restored: %s replicates %d indices from %s." %
              (follower_name, total, leader_name))
     return state

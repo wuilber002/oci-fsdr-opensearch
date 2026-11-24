@@ -164,7 +164,11 @@ controller log and structured result::
       https://127.0.0.1:1604/v1/jobs/<JOB_ID>
     curl --cacert /opt/oci-fsdr-opensearch/runtime/state/api-secrets/tls.crt \
       -H "Authorization: Bearer $FSDR_TOKEN" \
-      https://127.0.0.1:1604/v1/jobs/<JOB_ID>/output
+      'https://127.0.0.1:1604/v1/jobs/<JOB_ID>/output?levels=INFO,WARN,ERROR'
+
+To retrieve every categorized event, including OCI/OpenSearch diagnostics::
+
+    /opt/oci-fsdr-opensearch/bin/fsdr-job.sh log <JOB_ID> --debug
     curl --cacert /opt/oci-fsdr-opensearch/runtime/state/api-secrets/tls.crt \
       -H "Authorization: Bearer $FSDR_TOKEN" \
       https://127.0.0.1:1604/v1/jobs/<JOB_ID>/result

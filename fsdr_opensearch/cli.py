@@ -201,9 +201,9 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
         try:
             with Store({"state_dir": str(directory)}).lock(blocking=False, name="controller"):
                 logs = Path(args.log_dir).resolve() if args.log_dir else Path(directory) / "logs"
-                LOG.info("retention_result result=%s", cleanup(directory, logs, args.retention_days))
+                LOG.debug("retention_result result=%s", cleanup(directory, logs, args.retention_days))
         except BusyError:
-            LOG.info("retention_skipped reason=controller_busy")
+            LOG.debug("retention_skipped reason=controller_busy")
     structured_result["summary"] = report
     feedback("Completed {}: outcome={}; phase={}; active_primary={}; protected_indices={}; duration={}s.".format(
         args.command, outcome, report["phase"] or "unavailable", report["active"] or "unavailable",
@@ -228,8 +228,8 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
             print(f"Reason: {reason}")
     else:
         print(json.dumps(structured_result, indent=2, ensure_ascii=False))
-    LOG.info("execution_finished command=%s outcome=%s reason=%s duration=%.3f", args.command, outcome,
-             reason, report["duration_seconds"])
+    LOG.debug("execution_finished command=%s outcome=%s reason=%s duration=%.3f", args.command, outcome,
+              reason, report["duration_seconds"])
 
 
 def main(argv=None):
@@ -254,13 +254,13 @@ def main(argv=None):
         directory = Path(args.state_dir).resolve() if args.state_dir else (
             default_state_dir(args.secret_id) if args.secret_id else Path(__file__).resolve().parent.parent / "var/dr-pending")
         log_dir = Path(args.log_dir).resolve() if args.log_dir else directory / "logs"
-        # JSONL remains the durable audit trail. The API additionally passes a
-        # per-job log path, so its dashboard log receives readable diagnostics
-        # without mixing in the final structured JSON stdout result.
-        configure_logging({"log_dir": str(log_dir)}, console=False,
-                          human_log_file=os.environ.get("FSDR_JOB_LOG_FILE"))
+        # stderr is the single human controller log. The API captures it as
+        # ``controller.log`` while stdout remains a valid structured result.
+        # Do not open the API log path here: independent file handles could
+        # interleave or truncate lines while the parent captures stderr.
+        configure_logging({"log_dir": str(log_dir)}, console=True)
         configured = True
-        LOG.info("command_started command=%s", args.command)
+        LOG.debug("command_started command=%s", args.command)
         if not getattr(args, "scheduled", False):
             feedback("Starting %s. Progress and diagnostic events are being recorded for this job." %
                      args.command)
@@ -326,7 +326,7 @@ def main(argv=None):
                     else:
                         result = reprotect(cfg, cs, store, parallelism=args.reprotect_parallelism)
                 retention = cleanup(directory, log_dir, args.retention_days)
-                LOG.info("retention_result result=%s", retention)
+                LOG.debug("retention_result result=%s", retention)
                 finish(args, directory, result, cfg, started)
         return 0
     except BusyError:
@@ -334,7 +334,7 @@ def main(argv=None):
             finish(args, directory, None, None, started, "skipped", "controller_busy")
             return 0
         LOG.warning("execution_busy command=%s", args.command)
-        print("Another operation is in progress; try again later.", file=sys.stderr)
+        feedback("Another operation is in progress; try again later.", "WARN")
         return 75
     except KeyboardInterrupt:
         if configured:
@@ -347,10 +347,10 @@ def main(argv=None):
                 finish(args, directory, None, cfg, started, "failed", "execution_failed")
             except Exception:
                 LOG.exception("failure_report_failed")
-            print(f"Failure: {exc}. FSDR state is preserved for analysis/resume; the job log includes diagnostic details.",
-                  file=sys.stderr)
+            feedback("Failure: {}. FSDR state is preserved for analysis/resume; the job log includes diagnostic details.".format(exc),
+                     "ERROR")
         else:
-            print(f"Failure before execution started: {exc}", file=sys.stderr)
+            feedback("Failure before execution started: {}".format(exc), "ERROR")
         return 1
 
 

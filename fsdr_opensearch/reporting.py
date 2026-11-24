@@ -72,7 +72,7 @@ def record_evidence(directory, command, report):
                 "outcome": report.get("outcome"), "files": files}
     from .core import archive
     archive(directory, "evidence", evidence)
-    LOG.info("evidence_recorded command=%s transition=%s", command, evidence["transition_id"])
+    LOG.debug("evidence_recorded command=%s transition=%s", command, evidence["transition_id"])
     return evidence
 
 
@@ -97,6 +97,6 @@ def cleanup(directory, log_dir, retention_days):
                 continue
             if path.stat().st_mtime < cutoff:
                 path.unlink()
-                LOG.info("retention_removed file=%s", path)
+                LOG.debug("retention_removed file=%s", path)
                 removed += 1
     return {"skipped": False, "removed": removed, "retention_days": retention_days}

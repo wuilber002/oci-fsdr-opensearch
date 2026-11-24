@@ -27,9 +27,10 @@ hash SHA-256, tamanho e lista dos arquivos. O bundle contém:
 * ``workflow.json`` com a sequência e os gates de cada passo;
 * ``inventory-health.json`` e ``last-run.json``;
 * ``results/<job-id>.json`` com o resultado estruturado daquela execução;
-* ``controller.log`` como arquivo texto separado, com o progresso, as
-  validações, os clusters consultados e o traceback seguro quando houver falha.
-  O mesmo objeto também pode ser lido pela API do controller;
+* ``controller.log`` como arquivo texto separado e único, com todas as
+  mensagens categorizadas como ``DEBUG``, ``INFO``, ``WARN`` ou ``ERROR``.
+  Ele inclui o progresso operacional, validações, chamadas OCI/OpenSearch e
+  traceback seguro quando houver falha. O mesmo objeto pode ser lido pela API;
 * ``discovery.json`` com a identidade dos clusters, endpoints e aliases CCR;
 * registros ``history/evidence-*.json`` que fixam os hashes de transições
   concluídas.
@@ -46,9 +47,11 @@ Consulta programática do log
 
 Após a entrega, o metadado do job registra o objeto ``controller.log``. A rota
 ``GET /v1/jobs/<job-id>/output`` consulta primeiro o arquivo local e, se ele
-não estiver mais disponível, obtém a cópia do Object Storage. A resposta traz
-``X-FSDR-Log-Source: local`` ou ``object-storage``. Assim, um consumidor não
-precisa listar o bucket nem conhecer o caminho do ciclo.
+não estiver mais disponível, obtém a cópia do Object Storage. Por padrão ela
+retorna somente ``INFO``, ``WARN`` e ``ERROR``. Use
+``?levels=DEBUG,INFO,WARN,ERROR`` para obter todo o mesmo arquivo sem precisar
+listar o bucket. A resposta traz ``X-FSDR-Log-Source: local`` ou
+``object-storage``.
 
 Ciclo único por par de clusters
 -------------------------------

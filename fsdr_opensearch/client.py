@@ -103,7 +103,7 @@ class Client:
                 with self.private_ip_resolution(), self.opener.open(req, timeout=self.cfg["request_timeout"]) as response:
                     data = response.read()
                     result = json.loads(data) if data else {}
-                LOG.info("http cluster=%s method=%s path=%s duration=%.3f outcome=ok",
+                LOG.debug("http cluster=%s method=%s path=%s duration=%.3f outcome=ok",
                          self.name, method, path, time.monotonic() - started)
                 if isinstance(result, dict) and (result.get("acknowledged") is False or result.get("errors") is True):
                     # Bulk item errors are inspected in bulk(), not discarded here.

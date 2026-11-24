@@ -131,7 +131,7 @@ class Cloud:
             LOG.error("oci_read operation=%s status=%s code=%s request_id=%s message=%s type=%s duration=%.3f", operation,
                       status, code, request_id, message, type(exc).__name__, time.monotonic() - started)
             raise CloudError(operation, status, transient, code, request_id, message) from None
-        LOG.info("oci_read operation=%s duration=%.3f request_id=%s", operation,
+        LOG.debug("oci_read operation=%s duration=%.3f request_id=%s", operation,
                  time.monotonic() - started, response.headers.get("opc-request-id"))
         return response.data
 

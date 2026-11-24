@@ -27,14 +27,17 @@ class BusyError(Error):
     """A concurrent administrative operation currently owns the lock."""
 
 
-def feedback(message):
-    """Emit a short, human-facing progress update without mixing it with JSON output.
+def feedback(message, level="INFO"):
+    """Emit one categorized, human-facing controller-log event on stderr.
 
-    The complete audit trail remains in the JSONL file.  stderr is deliberate:
-    stdout can still be consumed as JSON by automation.
+    stdout remains reserved for the structured result.  The API captures stderr
+    as the single ``controller.log`` file, while the terminal and dashboard can
+    filter its lines by their explicit level.
     """
+    if level not in {"DEBUG", "INFO", "WARN", "ERROR"}:
+        raise ValueError("invalid feedback level")
     stamp = time.strftime("%H:%M:%S")
-    print("[%s] %s" % (stamp, message), file=sys.stderr, flush=True)
+    print("[%s] %-5s %s" % (stamp, level, message), file=sys.stderr, flush=True)
 
 
 def index_name(value):
@@ -90,17 +93,20 @@ def load_config(path):
 
 
 class HumanFormatter(logging.Formatter):
-    """Readable per-job diagnostic log, with the same secret redaction as JSONL."""
+    """Readable, categorized controller-log rendering with secret redaction."""
     def __init__(self, secrets):
-        super().__init__("%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%SZ")
+        super().__init__()
         self.secrets = sorted((s for s in secrets if s), key=len, reverse=True)
-        self.converter = time.gmtime
 
     def format(self, record):
-        output = super().format(record)
+        stamp = time.strftime("%H:%M:%S", time.localtime(record.created))
+        message = record.getMessage()
+        if record.exc_info:
+            message += " | " + self.formatException(record.exc_info).replace("\n", " | ")
         for secret in self.secrets:
-            output = output.replace(secret, "[REDACTED]")
-        return output
+            message = message.replace(secret, "[REDACTED]")
+        level = "WARN" if record.levelname == "WARNING" else record.levelname
+        return "[%s] %-5s %s" % (stamp, level, message)
 
 
 class JsonFormatter(logging.Formatter):
@@ -128,7 +134,8 @@ def configure_logging(cfg, console=False, human_log_file=None):
     secrets = [os.environ.get(c.get("password_env", ""), "")
                for c in cfg.get("clusters", {}).values()]
     formatter = JsonFormatter(run_id, secrets)
-    LOG.setLevel(logging.INFO)
+    LOG.setLevel(logging.DEBUG)
+    LOG.propagate = False
     for old_handler in LOG.handlers:
         old_handler.close()
     LOG.handlers.clear()
@@ -141,10 +148,10 @@ def configure_logging(cfg, console=False, human_log_file=None):
         human_handler.setFormatter(HumanFormatter(secrets))
         LOG.addHandler(human_handler)
     if console:
-        stream = logging.StreamHandler()
-        stream.setFormatter(formatter)
+        stream = logging.StreamHandler(sys.stderr)
+        stream.setFormatter(HumanFormatter(secrets))
         LOG.addHandler(stream)
-    LOG.info("execution_started")
+    LOG.debug("execution_started")
     return run_id
 
 
