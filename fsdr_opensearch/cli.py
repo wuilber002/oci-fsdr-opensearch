@@ -157,6 +157,22 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
         report["cycle_id"] = cycle_id
     if args.command == "inventory":
         record_inventory_attempt(directory, outcome, reason, (state or {}).get("inventory_at"), elapsed)
+    clusters = {name: {"id": cluster["id"], "display_name": cluster["display_name"]}
+                for name, cluster in (cfg or {}).get("clusters", {}).items()}
+    structured_result = {"result": result, "clusters": clusters, "summary": report}
+    if job_id:
+        # The API captures this same stdout result separately from stderr. Keep
+        # a password-free copy in state so its evidence bundle can include it.
+        result_directory = Path(directory) / "results"
+        result_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        result_path = result_directory / (job_id + ".json")
+        report["result_file"] = "results/" + result_path.name
+        structured_result["summary"] = report
+        write_json(result_path, structured_result)
+        try:
+            result_path.chmod(0o600)
+        except OSError:
+            pass
     with Store({"state_dir": str(directory)}).lock(name="report"):
         write_json(Path(directory) / "last-run.json", report)
     archive(directory, "run", report)
@@ -188,8 +204,7 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
                 LOG.info("retention_result result=%s", cleanup(directory, logs, args.retention_days))
         except BusyError:
             LOG.info("retention_skipped reason=controller_busy")
-    clusters = {name: {"id": cluster["id"], "display_name": cluster["display_name"]}
-                for name, cluster in (cfg or {}).get("clusters", {}).items()}
+    structured_result["summary"] = report
     if args.human:
         print(f"Command: {args.command} | outcome: {outcome} | duration: {report['duration_seconds']}s")
         print(f"Phase: {report['phase']} | primary: {report['active']} | indices: {report['index_count']}")
@@ -209,7 +224,7 @@ def finish(args, directory, result, cfg, started, outcome="success", reason=None
         if reason:
             print(f"Reason: {reason}")
     else:
-        print(json.dumps({"result": result, "clusters": clusters, "summary": report}, indent=2, ensure_ascii=False))
+        print(json.dumps(structured_result, indent=2, ensure_ascii=False))
     LOG.info("execution_finished command=%s outcome=%s reason=%s duration=%.3f", args.command, outcome,
              reason, report["duration_seconds"])
 

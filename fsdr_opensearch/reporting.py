@@ -87,6 +87,7 @@ def cleanup(directory, log_dir, retention_days):
                 (Path(directory) / "history", "discovery-*.json"),
                 (Path(directory) / "history", "run-*.json"),
                 (Path(directory) / "history", "evidence-*.json"),
+                (Path(directory) / "results", "*.json"),
                 (Path(log_dir), "fsdr-*.jsonl*")]
     for root, pattern in patterns:
         if root.is_symlink():

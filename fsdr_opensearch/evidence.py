@@ -34,13 +34,20 @@ def _identity(directory, secret_id):
     return hashlib.sha256(secret_id.encode("utf-8")).hexdigest()
 
 
-def _artifact_files(directory):
+def _artifact_files(directory, report=None):
     directory = Path(directory)
     selected = []
     for name in CURRENT_FILES:
         path = directory / name
         if path.is_file() and not path.is_symlink():
             selected.append((name, path))
+    # Preserve the current structured result separately from the readable log.
+    # Only a controller-generated path below ``results`` is admissible.
+    result_name = (report or {}).get("result_file") if isinstance(report, dict) else None
+    if isinstance(result_name, str) and result_name.startswith("results/"):
+        path = directory / result_name
+        if path.is_file() and not path.is_symlink() and path.parent == directory / "results":
+            selected.append((result_name, path))
     # Evidence records hold integrity hashes for each completed transition.
     history = directory / "history"
     if history.is_dir() and not history.is_symlink():
@@ -81,7 +88,7 @@ def _create_bundle(directory, secret_id, prefix, report):
     base = outbox / (stamp + "-" + execution_id)
     bundle = base.with_suffix(".tar.gz")
     manifest_path = base.with_suffix(".manifest.json")
-    files = _artifact_files(directory)
+    files = _artifact_files(directory, report)
     entries = [{"name": name, "sha256": _digest(path), "bytes": path.stat().st_size}
                for name, path in files]
     manifest = {

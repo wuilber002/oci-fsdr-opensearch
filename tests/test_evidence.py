@@ -86,6 +86,20 @@ class EvidenceTests(unittest.TestCase):
         self.assertNotIn("logs/fsdr-secret.jsonl", names)
         self.assertFalse(list((self.directory / "evidence-outbox").glob("*")))
 
+    @patch("fsdr_opensearch.evidence.Cloud", FakeCloud)
+    def test_includes_current_structured_result_without_raw_log(self):
+        results = self.directory / "results"
+        write_json(results / "job123.json", {"result": {"indices": ["one"]}})
+        (self.directory / "logs" / "controller.log").write_text("human log", encoding="utf-8")
+        result = stage_and_publish(self.directory, SECRET, "fsdr-evidence", "evidence", 20,
+                                   {"command": "reprotect", "outcome": "success",
+                                    "result_file": "results/job123.json"})
+        self.assertEqual(result["status"], "published")
+        bundle = next(item[3] for item in FakeCloud.instances[-1].uploaded if item[2].endswith("bundle.tar.gz"))
+        with tarfile.open(fileobj=io.BytesIO(bundle), mode="r:gz") as archive:
+            self.assertIn("results/job123.json", archive.getnames())
+            self.assertNotIn("logs/controller.log", archive.getnames())
+
     @patch("fsdr_opensearch.evidence.Cloud", FailingCloud)
     def test_keeps_bundle_in_private_outbox_when_upload_fails(self):
         result = stage_and_publish(self.directory, SECRET, "fsdr-evidence", "evidence", 20,

@@ -660,6 +660,32 @@ class ApiTests(unittest.TestCase):
         expired_gate = next(gate for gate in step["requirements"] if gate["key"] == "fresh-inventory")
         self.assertIn("expired", expired_gate["detail"])
 
+    def test_job_result_returns_structured_json_separately_from_log(self):
+        class Manager:
+            def __init__(self, directory):
+                self.directory = Path(directory)
+
+            def read(self, job_id):
+                if job_id != "job":
+                    raise KeyError(job_id)
+                return {"id": job_id}
+
+            def result_path(self, job_id):
+                return self.directory / (job_id + ".result.json")
+
+        original = getattr(api.app.state, "manager", None)
+        with tempfile.TemporaryDirectory() as directory:
+            manager = Manager(directory)
+            manager.result_path("job").write_text('{"result":"ok"}\n', encoding="utf-8")
+            api.app.state.manager = manager
+            response = api.job_result("job")
+        if original is None:
+            del api.app.state.manager
+        else:
+            api.app.state.manager = original
+        self.assertEqual(response.media_type, "application/json")
+        self.assertEqual(response.body, b'{"result":"ok"}\n')
+
     def test_dashboard_job_log_stream_sends_output_then_end(self):
         class Manager:
             def __init__(self, directory):

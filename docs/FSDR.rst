@@ -149,8 +149,9 @@ Status, history and resume
 --------------------------
 
 Use ``{"command":"status"}`` to retrieve durable state, or inspect a job by
-``GET /v1/jobs/<id>`` and its captured output by
-``GET /v1/jobs/<id>/output``. A restarted API marks a running job as
+``GET /v1/jobs/<id>`` and its human-readable log by
+``GET /v1/jobs/<id>/output``. The final controller payload is independent
+valid JSON at ``GET /v1/jobs/<id>/result``. A restarted API marks a running job as
 ``interrupted`` and never repeats it automatically. For an interrupted
 switchover or failover, submit the command with ``"resume":true`` only after
 reviewing the state and audit log. A failover resumed in ``SERVICE_RESTORED``

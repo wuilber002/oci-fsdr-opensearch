@@ -136,8 +136,10 @@ print(job.get("status", "unknown"), job.get("exit_code") if job.get("exit_code")
   esac
 done
 
-printf '%s\n' "$job" | python3 -m json.tool
+printf 'Controller log for %s:\n' "$job_id"
 api "https://127.0.0.1:1604/v1/jobs/${job_id}/output" || true
+printf '\nStructured result JSON: https://127.0.0.1:1604/v1/jobs/%s/result\n' "$job_id" >&2
+printf 'Local controller result: %s/runtime/state/api-jobs/%s.result.json\n' "$root" "$job_id" >&2
 
 if [[ "$status" == succeeded ]]; then
   exit 0

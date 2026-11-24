@@ -140,9 +140,11 @@ reaches a terminal state::
     /opt/oci-fsdr-opensearch/bin/fsdr-job.sh inventory
     /opt/oci-fsdr-opensearch/bin/fsdr-job.sh reprotect '{"reprotect_parallelism":2}'
 
-The helper writes its progress to standard error and prints the final job
-record plus captured controller output to standard output. It exits with
-``0`` only when the API reports ``succeeded``. For a failed job, it preserves
+The helper writes its own status and the location of the structured result to
+standard error, and prints only the captured controller log to standard
+output. It exits with ``0`` only when the API reports ``succeeded``. The final
+JSON result is stored separately as ``api-jobs/<JOB_ID>.result.json`` and is
+available through ``GET /v1/jobs/<JOB_ID>/result``. For a failed job, it preserves
 the controller exit code when it is between ``1`` and ``125``; interrupted,
 invalid, rejected, and transport failures return a non-zero exit code. When
 the API rejects a request because its workflow prerequisites are not met, the
@@ -152,7 +154,7 @@ dashboard history and the selected job log. This makes the helper suitable as
 an external FSDR workflow step.
 
 To inspect an asynchronously submitted job manually, use its returned job ID
-and captured console output::
+controller log and structured result::
 
     curl --cacert /opt/oci-fsdr-opensearch/runtime/state/api-secrets/tls.crt \
       -H "Authorization: Bearer $FSDR_TOKEN" \
@@ -160,6 +162,9 @@ and captured console output::
     curl --cacert /opt/oci-fsdr-opensearch/runtime/state/api-secrets/tls.crt \
       -H "Authorization: Bearer $FSDR_TOKEN" \
       https://127.0.0.1:1604/v1/jobs/<JOB_ID>/output
+    curl --cacert /opt/oci-fsdr-opensearch/runtime/state/api-secrets/tls.crt \
+      -H "Authorization: Bearer $FSDR_TOKEN" \
+      https://127.0.0.1:1604/v1/jobs/<JOB_ID>/result
 
 ``GET /v1/jobs``, ``GET /v1/monitor`` and ``GET /v1/workflow`` require the
 Bearer token. ``/v1/workflow`` returns the durable planned-switchover gates and

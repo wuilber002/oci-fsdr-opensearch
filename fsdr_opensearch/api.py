@@ -142,7 +142,12 @@ class JobManager:
         return JOB_DIRECTORY / (job_id + ".json")
 
     def output_path(self, job_id):
-        return JOB_DIRECTORY / (job_id + ".output")
+        """Human-readable controller progress, fed by CLI stderr."""
+        return JOB_DIRECTORY / (job_id + ".log")
+
+    def result_path(self, job_id):
+        """Structured controller result, fed by CLI stdout."""
+        return JOB_DIRECTORY / (job_id + ".result.json")
 
     def read(self, job_id):
         try:
@@ -175,7 +180,7 @@ class JobManager:
         job_id = uuid.uuid4().hex
         job = {"id": job_id, "submitted_at": utc_now(), "started_at": None, "finished_at": None,
                "status": "queued", "exit_code": None, "request": dump_model(request),
-               "output": self.output_path(job_id).name}
+               "output": self.output_path(job_id).name, "result": self.result_path(job_id).name}
         configured = _read_json(CONFIG, {})
         state_dir = Path(request.state_dir or configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
         cycle = bind_cycle(state_dir, _read_json(state_dir / "state.json", {}), job)
@@ -206,6 +211,7 @@ class JobManager:
             "rejection": rejection,
             "request": dump_model(request),
             "output": self.output_path(job_id).name,
+            "result": self.result_path(job_id).name,
         }
         lines = [
             "FSDR job rejected before execution.",
@@ -364,14 +370,19 @@ class JobManager:
                     job["workflow_evidence"] = evidence
                 self.write(job)
                 request = OperationRequest(**job["request"])
-                output = self.output_path(job_id)
-                with output.open("wb") as stream:
-                    result = subprocess.run(command_arguments(request), cwd=str(PROJECT), stdout=stream,
-                                            stderr=subprocess.STDOUT, env=dict(os.environ, PYTHONUNBUFFERED="1",
-                                                                               FSDR_API_JOB_ID=job_id,
-                                                                               FSDR_CYCLE_ID=job.get("cycle_id", "")),
+                output, structured_result = self.output_path(job_id), self.result_path(job_id)
+                # The CLI intentionally writes progress to stderr and its final
+                # structured report to stdout. Keep the two evidence streams
+                # separate so the dashboard log stays readable and automation
+                # can retrieve valid JSON without parsing log lines.
+                with output.open("wb") as log_stream, structured_result.open("wb") as result_stream:
+                    result = subprocess.run(command_arguments(request), cwd=str(PROJECT), stdout=result_stream,
+                                            stderr=log_stream, env=dict(os.environ, PYTHONUNBUFFERED="1",
+                                                                         FSDR_API_JOB_ID=job_id,
+                                                                         FSDR_CYCLE_ID=job.get("cycle_id", "")),
                                             check=False)
                 os.chmod(output, 0o600)
+                os.chmod(structured_result, 0o600)
                 job.update(status="succeeded" if result.returncode == 0 else "failed",
                            exit_code=result.returncode, finished_at=utc_now())
             except Exception as exc:  # The exception is intentionally not returned to API clients.
@@ -613,6 +624,20 @@ def output(job_id: str):
     except FileNotFoundError:
         data = b""
     return Response(content=data, media_type="text/plain; charset=utf-8")
+
+
+@app.get("/v1/jobs/{job_id}/result", dependencies=[Depends(token_auth)])
+def job_result(job_id: str):
+    """Return the final structured JSON result without console log lines."""
+    try:
+        manager = api_manager()
+        manager.read(job_id)
+        data = manager.result_path(job_id).read_bytes()
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found") from None
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="structured result is not available") from None
+    return Response(content=data, media_type="application/json")
 
 
 @app.get("/dashboard/v1/jobs/{job_id}/output")

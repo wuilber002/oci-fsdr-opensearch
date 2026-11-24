@@ -26,6 +26,7 @@ hash SHA-256, tamanho e lista dos arquivos. O bundle contém:
   invalidado e a validade do inventário que admitiu o switchover;
 * ``workflow.json`` com a sequência e os gates de cada passo;
 * ``inventory-health.json`` e ``last-run.json``;
+* ``results/<job-id>.json`` com o resultado estruturado daquela execução;
 * ``discovery.json`` com a identidade dos clusters, endpoints e aliases CCR;
 * registros ``history/evidence-*.json`` que fixam os hashes de transições
   concluídas.
