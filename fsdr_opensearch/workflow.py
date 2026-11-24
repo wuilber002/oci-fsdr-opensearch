@@ -93,7 +93,8 @@ def invalidate_expired_planned_cycle(state_dir: Path, state: dict[str, Any] | No
         return cycle
 
 
-def bind_cycle(state_dir: Path, state: dict[str, Any] | None, job: dict[str, Any]) -> dict[str, Any] | None:
+def bind_cycle(state_dir: Path, state: dict[str, Any] | None, job: dict[str, Any],
+               allow_start: bool = True) -> dict[str, Any] | None:
     """Attach an accepted job to the active cycle, or create its first cycle.
 
     Scheduler inventory is evidence only: it never opens or refreshes a DR
@@ -117,7 +118,10 @@ def bind_cycle(state_dir: Path, state: dict[str, Any] | None, job: dict[str, Any
                 cycle.update(route="failover", route_changed_at=time.time(), route_changed_by=job.get("id"))
                 write_json(_cycle_path(state_dir), cycle)
             return cycle
-        if command not in CYCLE_START_COMMANDS:
+        # A rejected request belongs to an already active cycle but must never
+        # create one by itself. Only an admitted start command establishes a
+        # new DR execution boundary.
+        if not allow_start or command not in CYCLE_START_COMMANDS:
             return None
         route = "failover" if command == "failover" else "switchover"
         inventory_at = (state or {}).get("inventory_at")

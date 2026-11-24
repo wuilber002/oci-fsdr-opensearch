@@ -624,6 +624,30 @@ class ApiTests(unittest.TestCase):
         finally:
             api.CONFIG = original
 
+    def test_rejected_submission_joins_an_active_cycle(self):
+        original_jobs, original_config = api.JOB_DIRECTORY, api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                api.JOB_DIRECTORY = root / "jobs"
+                api.JOB_DIRECTORY.mkdir()
+                state_dir = root / "state"
+                state_dir.mkdir()
+                state = {"phase": "READY"}
+                cycle = api.bind_cycle(state_dir, state, {
+                    "id": "a" * 32, "submitted_at": "2026-01-01T00:00:00Z",
+                    "request": {"command": "inventory"},
+                })
+                (state_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
+                api.CONFIG = root / "config.json"
+                api.CONFIG.write_text(json.dumps({"state_dir": str(state_dir)}), encoding="utf-8")
+                job = api.JobManager().reject(api.OperationRequest(command="switchover"), {
+                    "code": "workflow_prerequisites_unmet", "requirements": [],
+                })
+                self.assertEqual(job["cycle_id"], cycle["id"])
+        finally:
+            api.JOB_DIRECTORY, api.CONFIG = original_jobs, original_config
+
     def test_api_automatically_resumes_pending_failover_for_plain_command(self):
         class Manager:
             def __init__(self):

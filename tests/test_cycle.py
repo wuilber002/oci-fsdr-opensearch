@@ -29,6 +29,14 @@ class CycleTests(unittest.TestCase):
         self.assertIsNone(bind_cycle(self.state_dir, self.state, job("scheduled", "inventory", scheduled=True)))
         self.assertIsNone(read_cycle(self.state_dir))
 
+    def test_rejected_request_can_join_but_not_start_a_cycle(self):
+        rejected = job("rejected", "switchover")
+        self.assertIsNone(bind_cycle(self.state_dir, self.state, rejected, allow_start=False))
+        active = bind_cycle(self.state_dir, self.state, job("initial", "inventory"))
+        self.assertIsNotNone(active)
+        self.assertEqual(bind_cycle(self.state_dir, self.state, rejected, allow_start=False)["id"],
+                         active["id"])
+
     def test_planned_steps_share_one_cycle_until_reprotect(self):
         first = job("a" * 32, "inventory")
         cycle = bind_cycle(self.state_dir, self.state, first)

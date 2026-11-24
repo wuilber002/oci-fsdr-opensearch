@@ -214,6 +214,15 @@ class JobManager:
             "output": self.output_path(job_id).name,
             "result": self.result_path(job_id).name,
         }
+        configured = _read_json(CONFIG, {})
+        state_dir = Path(request.state_dir or configured.get("state_dir", "/var/lib/oci-opensearch-fsdr"))
+        # A refusal is evidence within an active DR process, but it must not
+        # turn an invalid attempt into the start of a new one.
+        cycle = (bind_cycle(state_dir, _read_json(state_dir / "state.json", {}), job,
+                            allow_start=False)
+                 if state_dir.is_dir() else None)
+        if cycle:
+            job["cycle_id"] = cycle["id"]
         stamp = time.strftime("%H:%M:%S")
         requirements = rejection.get("requirements") or []
         unmet = [item for item in requirements if not item.get("met")]
