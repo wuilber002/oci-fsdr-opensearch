@@ -94,8 +94,13 @@ class ApiTests(unittest.TestCase):
         self.assertIn("topology-bidirectional", api.DASHBOARD_HTML)
         self.assertIn("primary-identified", api.DASHBOARD_HTML)
         self.assertIn("primary-unavailable", api.DASHBOARD_HTML)
-        self.assertIn(".primary-card,.topology-card,.state-card{width:250px", api.DASHBOARD_HTML)
-        self.assertIn("primaryStat(mon)+topologyStat(topology)+stateStat(mon)", api.DASHBOARD_HTML)
+        self.assertIn("grid-template-columns:repeat(4,minmax(220px,1fr))", api.DASHBOARD_HTML)
+        self.assertIn("Replication health", api.DASHBOARD_HTML)
+        self.assertIn("Inventory schedule", api.DASHBOARD_HTML)
+        self.assertIn("Protection status", api.DASHBOARD_HTML)
+        self.assertIn("Recovery point", api.DASHBOARD_HTML)
+        self.assertIn("Cluster health", api.DASHBOARD_HTML)
+        self.assertIn("primaryStat(mon)+topologyStat(topology)+stateStat(mon)+replicationStat(mon)", api.DASHBOARD_HTML)
         self.assertIn("function stateLabel", api.DASHBOARD_HTML)
         self.assertIn("function summaryCard", api.DASHBOARD_HTML)
         self.assertIn("summary-card", api.DASHBOARD_HTML)
@@ -854,6 +859,49 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(api._effective_write_state({}, None, False, healthy, None, False)[0], "unknown")
         self.assertEqual(api._effective_write_state(None, None, True, healthy, None, False)[0], "unknown")
 
+    def test_monitor_exposes_inventory_schedule_and_cluster_health(self):
+        class Client:
+            def request(self, method, path):
+                if path == "/_cluster/health":
+                    return {"status": "green"}
+                if path == "/_mapping":
+                    return {"orders": {"mappings": {"_meta": {"fsdr": {"replicate": True}}}}}
+                if path == "/_settings?flat_settings=true":
+                    return {"orders": {"settings": {}}}
+                if path == "/_cluster/settings?include_defaults=true&flat_settings=true":
+                    return {"defaults": {}, "persistent": {}, "transient": {}}
+                if path == "/_cluster/health?level=indices":
+                    return {"indices": {"orders": {"status": "green", "active_primary_shards": 1}}}
+                raise AssertionError((method, path))
+
+            def document_counts(self, scoped=False):
+                return {"orders": 2}
+
+            def status(self, index):
+                return {"status": "SYNCING", "syncing_details": {"leader_checkpoint": 10, "follower_checkpoint": 10}}
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state_dir = root / "state"
+                state_dir.mkdir()
+                now = time.time()
+                (state_dir / "state.json").write_text(json.dumps({"active": "a", "phase": "PROTECTION_RESTORED", "inventory_at": now, "indices": [{"a": "orders", "b": "orders"}]}))
+                (state_dir / "inventory-health.json").write_text(json.dumps({"outcome": "success", "duration_seconds": 3.2, "last_success_at": now}))
+                config = root / "config.json"
+                config.write_text(json.dumps({"secret_id": "secret", "state_dir": str(state_dir), "inventory_enabled": True, "inventory_interval_hours": 2}))
+                api.CONFIG = config
+                cfg = {"clusters": {"a": {"id": "a", "display_name": "Alpha"}, "b": {"id": "b", "display_name": "Beta"}}}
+                with patch("fsdr_opensearch.api._observer_clients", return_value=(cfg, {"a": Client(), "b": Client()})):
+                    data = api.monitor_snapshot()
+        finally:
+            api.CONFIG = original
+        self.assertEqual(data["inventory_schedule"]["last"]["duration_seconds"], 3.2)
+        self.assertTrue(data["inventory_schedule"]["enabled"])
+        self.assertEqual(data["inventory_schedule"]["interval_seconds"], 7200)
+        self.assertEqual(data["clusters"]["a"]["health"], "green")
+
     def test_monitor_reports_the_live_fsdr_replication_marker(self):
         class Client:
             def __init__(self, marked, syncing, write_blocked=False):
@@ -862,6 +910,8 @@ class ApiTests(unittest.TestCase):
                 self.write_blocked = write_blocked
 
             def request(self, method, path):
+                if (method, path) == ("GET", "/_cluster/health"):
+                    return {"status": "green"}
                 if (method, path) == ("GET", "/_mapping"):
                     meta = {"fsdr": {"replicate": True}} if self.marked else {}
                     return {"orders": {"mappings": {"_meta": meta}}}

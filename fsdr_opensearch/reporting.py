@@ -48,12 +48,14 @@ def summary(result, state, max_age_seconds, elapsed, outcome):
             "component": "OpenSearch; application and routing are external FSDR steps"}
 
 
-def record_inventory_attempt(directory, outcome, reason=None, collected_at=None):
+def record_inventory_attempt(directory, outcome, reason=None, collected_at=None, duration_seconds=None):
     # Separate lock: recording a skipped collection must not compete for the DR lock.
     with Store({"state_dir": str(directory)}).lock(name="inventory-health"):
         path = Path(directory) / "inventory-health.json"
         data = json.loads(path.read_text()) if path.exists() else {}
         data.update(last_attempt_at=time.time(), outcome=outcome, reason=reason)
+        if isinstance(duration_seconds, (int, float)):
+            data["duration_seconds"] = round(max(duration_seconds, 0), 3)
         if outcome == "success":
             data["last_success_at"] = collected_at
         write_json(path, data)

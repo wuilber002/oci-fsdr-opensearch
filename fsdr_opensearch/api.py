@@ -790,7 +790,8 @@ def monitor_snapshot():
     state_file = state_dir / "state.json"
     manager = getattr(app.state, "manager", None)
     signature = (str(CONFIG), _file_version(CONFIG), _file_version(state_file),
-                 _file_version(state_dir / "workflow.json"))
+                 _file_version(state_dir / "workflow.json"),
+                 _file_version(state_dir / "inventory-health.json"))
     try:
         lifetime = max(1, float(os.environ.get("FSDR_MONITOR_SNAPSHOT_CACHE_SECONDS", "10")))
     except ValueError:
@@ -890,6 +891,12 @@ def _monitor_snapshot(configured, state_dir, state):
     owns the controller.
     """
     secret_id = configured.get("secret_id")
+    interval_hours = configured.get("inventory_interval_hours", 2)
+    try:
+        interval_seconds = max(60, float(interval_hours) * 3600)
+    except (TypeError, ValueError):
+        interval_seconds = 7200
+    inventory_health = _read_json(state_dir / "inventory-health.json", {})
     base = {"observed_at": utc_now(), "phase": state.get("phase"),
             "primary": state.get("active"), "inventory_at": state.get("inventory_at"),
             "state_updated_at": state.get("updated_at"),
@@ -897,6 +904,10 @@ def _monitor_snapshot(configured, state_dir, state):
             "current_index": (state.get("transition") or {}).get("current_index"),
             "indices": state.get("indices", []), "clusters": {}, "errors": [],
             "topology": "unavailable", "topology_directions": [],
+            "transition": state.get("transition") or {}, "rpo": state.get("rpo") or {},
+            "inventory_schedule": {"enabled": configured.get("inventory_enabled") is True,
+                                   "interval_seconds": interval_seconds,
+                                   "last": inventory_health if isinstance(inventory_health, dict) else {}},
             "workflow": workflow_snapshot(state_dir, state,
                 getattr(app.state, "manager", None).recent() if getattr(app.state, "manager", None) else [])}
     if not secret_id:
@@ -924,7 +935,12 @@ def _monitor_snapshot(configured, state_dir, state):
         cluster = cfg["clusters"][name]
         view = {"name": cluster["display_name"], "id": cluster["id"],
                 "role": "primary" if state.get("active") == name else "follower",
-                "indices": [], "documents": 0, "error": None}
+                "indices": [], "documents": 0, "error": None, "health": "unknown"}
+        try:
+            health = cs[name].request("GET", "/_cluster/health")
+            view["health"] = health.get("status", "unknown") if isinstance(health, dict) else "unknown"
+        except Exception as exc:
+            view["error"] = "Could not read cluster health ({})".format(type(exc).__name__)
         try:
             mappings = cs[name].request("GET", "/_mapping")
         except Exception as exc:

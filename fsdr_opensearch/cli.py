@@ -145,10 +145,11 @@ def bootstrap(args, directory, log_dir):
 
 def finish(args, directory, result, cfg, started, outcome="success", reason=None):
     state = raw_state(directory)
-    report = summary(result, state, args.max_inventory_age_hours * 3600, time.monotonic() - started, outcome)
+    elapsed = time.monotonic() - started
+    report = summary(result, state, args.max_inventory_age_hours * 3600, elapsed, outcome)
     report.update(command=args.command, reason=reason, finished_at=time.time())
     if args.command == "inventory":
-        record_inventory_attempt(directory, outcome, reason, (state or {}).get("inventory_at"))
+        record_inventory_attempt(directory, outcome, reason, (state or {}).get("inventory_at"), elapsed)
     with Store({"state_dir": str(directory)}).lock(name="report"):
         write_json(Path(directory) / "last-run.json", report)
     archive(directory, "run", report)
