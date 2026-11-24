@@ -85,6 +85,7 @@ class ApiTests(unittest.TestCase):
         self.assertIn("function groupHistory", api.DASHBOARD_HTML)
         self.assertIn("cycle-group", api.DASHBOARD_HTML)
         self.assertIn("Cycle ID:", api.DASHBOARD_HTML)
+        self.assertIn("job?.request?.command||'Unavailable'", api.DASHBOARD_HTML)
         self.assertIn("EventSource", api.DASHBOARD_HTML)
         self.assertIn("/dashboard/v1/jobs/'+encodeURIComponent(id)+'/events", api.DASHBOARD_HTML)
         self.assertIn("connectDashboardStream", api.DASHBOARD_HTML)
