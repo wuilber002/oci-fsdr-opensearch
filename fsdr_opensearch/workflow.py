@@ -466,8 +466,12 @@ def workflow_snapshot(state_dir: Path, state: dict[str, Any] | None, jobs: Itera
                                          "detail": "Satisfied when this successful execution began.",
                                          "level": "waiting"}
                                         for item in requirements]
+        # ``requirements`` may be frozen to preserve the evidence that
+        # admitted a completed/running operation on the dashboard. Keep the
+        # live admission rules separately: a new submission must always be
+        # checked against the state now, never historical evidence.
         steps.append({"command": command, "label": label, "status": status, "status_detail": detail,
-                      "eligible": eligible,
+                      "eligible": eligible, "admission_requirements": requirements,
                       "requirements": displayed_requirements,
                       "last_event": latest, "last_attempt_at": last_attempt_at})
     by_command = {step["command"]: step for step in steps}

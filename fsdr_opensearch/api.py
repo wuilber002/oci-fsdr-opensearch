@@ -215,12 +215,17 @@ class JobManager:
             "result": self.result_path(job_id).name,
         }
         stamp = time.strftime("%H:%M:%S")
+        requirements = rejection.get("requirements") or []
+        unmet = [item for item in requirements if not item.get("met")]
+        primary_reason = ((unmet[0].get("detail") or unmet[0].get("key"))
+                          if unmet else "Required workflow gates are not satisfied.")
         lines = [
-            "[{}] ERROR FSDR job rejected before execution.".format(stamp),
-            "[{}] INFO  Command: {}".format(stamp, request.command),
-            "[{}] ERROR Reason: {}".format(stamp, job["reason"]),
-            "[{}] INFO  The controller did not start because required workflow gates are not satisfied.".format(stamp),
+            "[{}] ERROR {} was rejected: {}".format(stamp, request.command, primary_reason),
+            "[{}] INFO  The controller did not start; command: {}.".format(stamp, request.command),
+            "[{}] DEBUG Rejection code: {}.".format(stamp, job["reason"]),
         ]
+        if rejection.get("phase"):
+            lines.append("[{}] INFO  Current FSDR state: {}.".format(stamp, rejection["phase"]))
         inventory = rejection.get("inventory") or {}
         if inventory:
             age = inventory.get("age_seconds")
@@ -231,16 +236,18 @@ class JobManager:
                     "valid" if inventory.get("fresh") else "expired"))
             elif inventory.get("detail"):
                 lines.append("[{}] INFO  Inventory: {}".format(stamp, inventory["detail"]))
-        requirements = rejection.get("requirements") or []
-        unmet = [item for item in requirements if not item.get("met")]
         if unmet:
-            lines.append("[{}] WARN  Unmet requirements:".format(stamp))
+            lines.append("[{}] ERROR Required workflow gates:".format(stamp))
             for item in unmet:
                 detail = item.get("detail") or item.get("key") or "Requirement not satisfied"
                 explanation = item.get("explanation")
-                lines.append("[{}] WARN  - {}".format(stamp, detail))
+                lines.append("[{}] ERROR - {}".format(stamp, detail))
                 if explanation:
-                    lines.append("[{}] WARN    {}".format(stamp, explanation))
+                    lines.append("[{}] INFO  {}".format(stamp, explanation))
+        recommended = rejection.get("recommended_next_step") or {}
+        if recommended.get("label"):
+            lines.append("[{}] INFO  Next eligible step: {}.".format(
+                stamp, recommended["label"]))
         self.output_path(job_id).write_text("\n".join(lines) + "\n", encoding="utf-8")
         os.chmod(self.output_path(job_id), 0o600)
         self.write(job)
@@ -555,11 +562,23 @@ def workflow_gate(request, manager):
                                  candidate=dump_model(request))
     step = step_for(snapshot, request.command)
     if not step or not step["eligible"]:
+        # A completed step displays the requirements captured when it ran.
+        # New submissions must instead be evaluated against the live rules;
+        # otherwise a retry after the FSDR phase moved on has no unmet gate to
+        # explain to the operator.
+        requirements = (step.get("admission_requirements", step.get("requirements", []))
+                        if step else [])
+        recommended = next((candidate for candidate in snapshot.get("steps", [])
+                            if candidate.get("command") not in {"inventory", request.command}
+                            and candidate.get("eligible")), None)
         raise HTTPException(status_code=409, detail={
             "code": "workflow_prerequisites_unmet", "command": request.command,
             "status": step.get("status") if step else "blocked",
             "inventory": snapshot.get("inventory", {}),
-            "requirements": step.get("requirements", []) if step else [],
+            "phase": snapshot.get("phase"), "requirements": requirements,
+            "recommended_next_step": ({"command": recommended["command"],
+                                        "label": recommended["label"]}
+                                      if recommended else None),
         })
 
 

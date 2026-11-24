@@ -107,7 +107,10 @@ if not isinstance(detail, dict):
 
 if http_status == "409" and detail.get("code") == "workflow_prerequisites_unmet":
     print("FSDR job rejected before execution: {}.".format(detail.get("command", "requested command")))
-    print("Reason: workflow prerequisites are not satisfied.")
+    unmet = [item for item in detail.get("requirements", []) if not item.get("met")]
+    primary_reason = ((unmet[0].get("detail") or unmet[0].get("key"))
+                      if unmet else "workflow prerequisites are not satisfied")
+    print("Reason: {}.".format(primary_reason.rstrip(".")))
     job_id = detail.get("job_id")
     if job_id:
         print("Recorded in dashboard history as rejected job: {}.".format(job_id))
@@ -124,13 +127,15 @@ if http_status == "409" and detail.get("code") == "workflow_prerequisites_unmet"
             "valid" if inventory.get("fresh") else "expired"))
     elif inventory.get("detail"):
         print("Inventory: {}".format(inventory["detail"]))
-    unmet = [item for item in detail.get("requirements", []) if not item.get("met")]
     if unmet:
         print("Unmet requirements:")
         for item in unmet:
             print("- {}".format(item.get("detail") or item.get("key") or "Requirement not satisfied"))
             if item.get("explanation"):
                 print("  {}".format(item["explanation"]))
+    recommended = detail.get("recommended_next_step") or {}
+    if recommended.get("label"):
+        print("Next eligible step: {}.".format(recommended["label"]))
 else:
     message = detail.get("message") or detail.get("code") or "request rejected"
     print("FSDR job request failed (HTTP {}): {}".format(http_status, message))

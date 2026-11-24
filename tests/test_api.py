@@ -579,10 +579,50 @@ class ApiTests(unittest.TestCase):
                 self.assertEqual(job["status"], "rejected")
                 self.assertEqual(manager.recent()[0]["id"], job["id"])
                 output = manager.output_path(job["id"]).read_text(encoding="utf-8")
-                self.assertIn("rejected before execution", output)
+                self.assertIn("switchover was rejected: No fresh inventory is available", output)
                 self.assertIn("No fresh inventory", output)
         finally:
             api.JOB_DIRECTORY = original
+
+    def test_workflow_gate_reports_live_requirements_for_retried_completed_step(self):
+        class Manager:
+            def recent(self):
+                return []
+
+        original = api.CONFIG
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state_dir = root / "state"
+                state_dir.mkdir()
+                timestamp = "2026-01-01T00:00:00Z"
+                state = {"phase": "READY", "inventory_at": time.time()}
+                for command in ("inventory", "validate-switchover"):
+                    record_event(state_dir, {
+                        "id": command, "request": {"command": command}, "status": "succeeded",
+                        "submitted_at": timestamp, "started_at": timestamp,
+                        "finished_at": timestamp, "exit_code": 0,
+                    }, state)
+                state["phase"] = "SERVICE_RESTORED"
+                record_event(state_dir, {
+                    "id": "switchover", "request": {"command": "switchover"}, "status": "succeeded",
+                    "submitted_at": timestamp, "started_at": timestamp,
+                    "finished_at": timestamp, "exit_code": 0,
+                }, state)
+                (state_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
+                config = root / "config.json"
+                config.write_text(json.dumps({"state_dir": str(state_dir)}), encoding="utf-8")
+                api.CONFIG = config
+
+                with self.assertRaises(api.HTTPException) as rejected:
+                    api.workflow_gate(api.OperationRequest(command="switchover"), Manager())
+                detail = rejected.exception.detail
+                self.assertFalse(next(item for item in detail["requirements"]
+                                      if item["key"] == "stable-state")["met"])
+                self.assertEqual(detail["recommended_next_step"]["command"],
+                                 "validate-post-switchover")
+        finally:
+            api.CONFIG = original
 
     def test_api_automatically_resumes_pending_failover_for_plain_command(self):
         class Manager:
