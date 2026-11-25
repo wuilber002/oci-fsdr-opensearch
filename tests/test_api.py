@@ -83,6 +83,8 @@ class ApiTests(unittest.TestCase):
         self.assertIn(".history-table tr{height:50px}", api.DASHBOARD_HTML)
         self.assertIn("history-pagination", api.DASHBOARD_HTML)
         self.assertIn("function groupHistory", api.DASHBOARD_HTML)
+        self.assertIn("function historyElapsed", api.DASHBOARD_HTML)
+        self.assertIn("historyElapsed(group)", api.DASHBOARD_HTML)
         self.assertIn("cycle-group", api.DASHBOARD_HTML)
         self.assertIn("Cycle ID:", api.DASHBOARD_HTML)
         self.assertIn("job?.request?.command||'Unavailable'", api.DASHBOARD_HTML)
